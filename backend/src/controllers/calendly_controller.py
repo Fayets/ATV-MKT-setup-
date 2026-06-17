@@ -67,9 +67,7 @@ def _find_lead_by_email(user_id: int, email: str) -> Lead | None:
     if not key:
         return None
     matches: list[Lead] = []
-    for row in list(Lead.select()):
-        if int(row.user_id) != user_id:
-            continue
+    for row in Lead.select(lambda l: l.user_id == user_id):
         stored = _email_from_notas(row.notas)
         if stored and stored.casefold() == key:
             matches.append(row)
@@ -196,6 +194,7 @@ def _fetch_event_invitees(
     return invitees
 
 
+@db_session
 def _apply_invitee_to_lead(
     user_id: int,
     *,
@@ -310,27 +309,31 @@ def _run_calendly_sync(uid: int) -> dict[str, int]:
                     }
                 )
 
-    with db_session:
-        for item in pending:
-            result = _apply_invitee_to_lead(
-                uid,
-                name=item["name"],
-                email=item["email"],
-                call_at=item["call_at"],
-                agendo_at=item["agendo_at"],
-            )
-            if result == "created":
-                created += 1
-            else:
-                updated += 1
+    for item in pending:
+        result = _apply_invitee_to_lead(
+            uid,
+            name=item["name"],
+            email=item["email"],
+            call_at=item["call_at"],
+            agendo_at=item["agendo_at"],
+        )
+        if result == "created":
+            created += 1
+        else:
+            updated += 1
 
-        try:
-            conn_row = ApiConnection.get(user_id=uid, platform="calendly")
-            now = datetime.utcnow()
-            conn_row.last_sync_at = now
-            conn_row.updated_at = now
-        except ObjectNotFound:
-            pass
+    _touch_calendly_last_sync(uid)
 
     synced = created + updated
     return {"synced": synced, "created": created, "updated": updated}
+
+
+@db_session
+def _touch_calendly_last_sync(user_id: int) -> None:
+    try:
+        conn_row = ApiConnection.get(user_id=user_id, platform="calendly")
+        now = datetime.utcnow()
+        conn_row.last_sync_at = now
+        conn_row.updated_at = now
+    except ObjectNotFound:
+        pass
