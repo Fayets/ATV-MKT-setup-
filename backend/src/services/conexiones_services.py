@@ -6,6 +6,13 @@ from pony.orm import db_session
 from src.models import ApiConnection
 from src.schemas import ApiConnectionResponse, ApiConnectionUpsertRequest
 
+_CALENDLY_CREDENTIAL_KEYS = frozenset({"api_key", "signing_key"})
+
+
+def _sanitize_calendly_credentials(creds: dict) -> dict:
+    """Solo persiste PAT y signing key; ignora q_* legacy ya guardados en BD."""
+    return {k: str(v) if v is not None else "" for k, v in creds.items() if k in _CALENDLY_CREDENTIAL_KEYS}
+
 
 class ConexionesServices:
     @staticmethod
@@ -40,6 +47,8 @@ class ConexionesServices:
             matches.sort(key=lambda c: c.id)
             existing = matches[0] if matches else None
             incoming_credentials = dict(body.credentials or {})
+            if platform.lower() == "calendly":
+                incoming_credentials = _sanitize_calendly_credentials(incoming_credentials)
             if existing:
                 previous_credentials = existing.credentials if isinstance(existing.credentials, dict) else {}
                 if platform.lower() == "instagram":

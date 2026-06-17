@@ -12,6 +12,15 @@ export type ConnectionRow = {
 }
 
 const WEBHOOK_PLATFORMS = ['manychat', 'calendly'] as const
+const CALENDLY_CREDENTIAL_KEYS = ['api_key', 'signing_key'] as const
+
+function calendlyCredentialsOnly(creds: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const key of CALENDLY_CREDENTIAL_KEYS) {
+    out[key] = creds[key] ?? ''
+  }
+  return out
+}
 
 const PANEL = 'panel-card'
 const PANEL_SETUP = 'panel-card flex min-h-[260px] flex-col p-5'
@@ -38,6 +47,7 @@ type Props = {
   cardLayout?: 'default' | 'setup'
   apiBase: string
   onSave: (credentials: Record<string, string>) => void | Promise<void>
+  onSyncComplete?: () => void | Promise<void>
 }
 
 function ConnectionCardInner({
@@ -46,6 +56,7 @@ function ConnectionCardInner({
   cardLayout = 'default',
   apiBase,
   onSave,
+  onSyncComplete,
 }: Props) {
   const isSetup = cardLayout === 'setup'
   const [form, setForm] = useState<Record<string, string>>({})
@@ -56,13 +67,16 @@ function ConnectionCardInner({
   const [errorMsg, setErrorMsg] = useState('')
   const [manychatWebhookInfo, setManychatWebhookInfo] = useState<ManychatWebhookInfo | null>(null)
   const [calendlyWebhookInfo, setCalendlyWebhookInfo] = useState<CalendlyWebhookInfo | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncStatus, setSyncStatus] = useState('')
 
   const isConnected =
     !platform.infoOnly && connection && Object.values(connection.credentials).some((v) => v?.trim())
 
   useEffect(() => {
-    if (connection?.credentials) setForm(connection.credentials)
-  }, [connection])
+    if (!connection?.credentials) return
+    setForm(platform.key === 'calendly' ? calendlyCredentialsOnly(connection.credentials) : connection.credentials)
+  }, [connection, platform.key])
 
   useEffect(() => {
     const infoPath =
@@ -115,14 +129,8 @@ function ConnectionCardInner({
     async (creds: Record<string, string>) => {
       setStatus('loading')
       setErrorMsg('')
-      const payload = { ...creds }
-      if (
-        platform.key !== 'manychat' &&
-        WEBHOOK_PLATFORMS.includes(platform.key as (typeof WEBHOOK_PLATFORMS)[number]) &&
-        !payload.webhook_token
-      ) {
-        payload.webhook_token = crypto.randomUUID().replace(/-/g, '')
-      }
+      const payload =
+        platform.key === 'calendly' ? calendlyCredentialsOnly(creds) : { ...creds }
       try {
         await onSave(payload)
         setStatus('success')
@@ -134,6 +142,57 @@ function ConnectionCardInner({
     },
     [onSave, platform.key],
   )
+
+  const syncCalendly = useCallback(async () => {
+    if (platform.key !== 'calendly') return
+    const apiKey = (form.api_key || connection?.credentials?.api_key || '').trim()
+    if (!apiKey) {
+      setSyncStatus('Guardá el Personal Access Token antes de sincronizar.')
+      return
+    }
+    setSyncing(true)
+    setSyncStatus('Sincronizando…')
+    try {
+      const res = await fetch(`${resolveBackendBase(apiBase)}/api/calendly/sync`, {
+        method: 'POST',
+        headers: backendAuthHeaders(),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        detail?: string | { msg?: string }[]
+        synced?: number
+        created?: number
+        updated?: number
+      }
+      if (!res.ok) {
+        const d = data.detail
+        const msg =
+          typeof d === 'string' ? d : Array.isArray(d) ? JSON.stringify(d) : 'Error al sincronizar'
+        setSyncStatus(`Error: ${msg}`)
+        return
+      }
+      setSyncStatus(`${data.created ?? 0} leads creados, ${data.updated ?? 0} actualizados.`)
+      await onSyncComplete?.()
+    } catch (e) {
+      setSyncStatus(e instanceof Error ? e.message : 'Error al sincronizar')
+    } finally {
+      setSyncing(false)
+    }
+  }, [apiBase, connection?.credentials?.api_key, form.api_key, onSyncComplete, platform.key])
+
+  const calendlySyncBlock =
+    platform.key === 'calendly' ? (
+      <div className="mt-3 space-y-2">
+        <button
+          type="button"
+          disabled={syncing}
+          onClick={() => void syncCalendly()}
+          className="rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text2)] disabled:opacity-50"
+        >
+          {syncing ? 'Sincronizando…' : 'Sincronizar'}
+        </button>
+        {syncStatus ? <p className="text-[12px] text-[var(--text2)]">{syncStatus}</p> : null}
+      </div>
+    ) : null
 
   const guideBlock = (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
@@ -186,16 +245,13 @@ function ConnectionCardInner({
     platform.key === 'manychat'
       ? Boolean(manychatWebhookInfo)
       : platform.key === 'calendly'
-        ? Boolean(calendlyWebhookInfo)
+        ? true
         : Boolean(
             connection?.credentials?.webhook_token &&
               WEBHOOK_PLATFORMS.includes(platform.key as (typeof WEBHOOK_PLATFORMS)[number]),
           )
 
-  const webhookTokenDisplay =
-    platform.key === 'manychat'
-      ? manychatWebhookInfo?.webhook_token
-      : connection?.credentials?.webhook_token
+  const webhookTokenDisplay = manychatWebhookInfo?.webhook_token ?? connection?.credentials?.webhook_token
 
   const webhookBlock = showWebhookBlock ? (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
@@ -212,10 +268,14 @@ function ConnectionCardInner({
           Copiar
         </button>
       </div>
-      <div className="mb-1 mt-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Token</div>
-      <code className="block break-all rounded bg-[var(--bg4)] px-3 py-2 text-[12px] text-[var(--text2)]">
-        {webhookTokenDisplay}
-      </code>
+      {platform.key === 'manychat' && webhookTokenDisplay ? (
+        <>
+          <div className="mb-1 mt-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Token</div>
+          <code className="block break-all rounded bg-[var(--bg4)] px-3 py-2 text-[12px] text-[var(--text2)]">
+            {webhookTokenDisplay}
+          </code>
+        </>
+      ) : null}
     </div>
   ) : null
 
@@ -265,6 +325,7 @@ function ConnectionCardInner({
             {status === 'success' && <p className="text-sm text-[var(--green)]">Guardado.</p>}
             {status === 'error' && <p className="text-sm text-[var(--text2)]">{errorMsg}</p>}
             {webhookBlock}
+            {calendlySyncBlock}
           </div>
         )}
       </div>
@@ -331,6 +392,7 @@ function ConnectionCardInner({
             </div>
           )}
           {webhookBlock}
+          {calendlySyncBlock}
         </div>
       )}
     </div>

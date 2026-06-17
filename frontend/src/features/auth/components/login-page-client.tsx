@@ -38,7 +38,7 @@ export function LoginPageClient() {
       setError(result.error)
       return
     }
-    router.replace('/dashboard')
+    router.replace('/sales-dashboard')
   }
 
   return (

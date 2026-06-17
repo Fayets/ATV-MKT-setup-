@@ -124,6 +124,7 @@ export default function ConexionesPage() {
             connection={connections[p.key]}
             apiBase={API_BASE}
             onSave={savers[p.key]}
+            onSyncComplete={fetchConnections}
           />
         ))}
       </div>

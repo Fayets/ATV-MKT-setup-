@@ -198,25 +198,6 @@ def _norm_name_for_match(raw: str) -> str:
     return s
 
 
-def _phone_from_calendly_payload(payload: dict) -> str:
-    for key in ("text_reminder_number", "phone_number", "new_phone"):
-        v = str(payload.get(key) or "").strip()
-        if v:
-            return v
-    for qa in payload.get("questions_and_answers") or []:
-        if not isinstance(qa, dict):
-            continue
-        q = str(qa.get("question") or "").casefold()
-        a = str(qa.get("answer") or "").strip()
-        if not a:
-            continue
-        if "phone" in q or "tel" in q or "celular" in q or "whatsapp" in q:
-            return a
-        if re.match(r"^\+?[\d\s\-().]{8,}$", a):
-            return a
-    return ""
-
-
 def _flatten_calendly_invitee_payload(body: dict) -> dict:
     """Unifica formas habituales del body (payload plano vs anidado tipo API v2)."""
     payload = body.get("payload")
@@ -264,119 +245,9 @@ def _parse_calendly_start_time(raw: str | None) -> datetime | None:
         return None
 
 
-def _ig_from_calendly_qa(payload: dict) -> str:
-    for qa in payload.get("questions_and_answers") or []:
-        if not isinstance(qa, dict):
-            continue
-        q = str(qa.get("question") or "").casefold()
-        if "instagram" in q or q in ("ig", "tu ig", "usuario ig"):
-            return str(qa.get("answer") or "").strip().lstrip("@")
-    return ""
-
-
 def _calendly_inner_payload(body: dict) -> dict:
     p = body.get("payload")
     return p if isinstance(p, dict) else {}
-
-
-def _calendly_qna_list(inner: dict) -> list:
-    qna = inner.get("questions_and_answers") or []
-    return qna if isinstance(qna, list) else []
-
-
-def _qna_position_matches(item: dict, position: int) -> bool:
-    p = item.get("position")
-    if p is None:
-        return False
-    try:
-        return int(p) == position
-    except (TypeError, ValueError):
-        return False
-
-
-def _qna_answer_at_position(qna: list, position: int) -> str | None:
-    for item in qna:
-        if not isinstance(item, dict):
-            continue
-        if not _qna_position_matches(item, position):
-            continue
-        ans = item.get("answer")
-        if ans is None:
-            return None
-        t = str(ans).strip()
-        return t if t else None
-    return None
-
-
-def _qna_answer_by_keywords(qna: list, keywords: tuple[str, ...]) -> str | None:
-    """Primer answer cuyo `question` contiene alguna keyword (case-insensitive)."""
-    if not keywords:
-        return None
-    keys = tuple(k.casefold() for k in keywords if k)
-    for item in qna:
-        if not isinstance(item, dict):
-            continue
-        q_text = str(item.get("question") or "").casefold()
-        if not q_text:
-            continue
-        if not any(k in q_text for k in keys):
-            continue
-        ans = item.get("answer")
-        if ans is None:
-            continue
-        t = str(ans).strip()
-        if t:
-            return t
-    return None
-
-
-def _qna_answer_by_question_hint(qna: list, question_hint: str) -> str | None:
-    """Primer answer cuyo `question` contiene el texto configurado por el usuario."""
-    hint = str(question_hint or "").strip()
-    if not hint:
-        return None
-    key = hint.casefold()
-    for item in qna:
-        if not isinstance(item, dict):
-            continue
-        q_text = str(item.get("question") or "").casefold()
-        if not q_text or key not in q_text:
-            continue
-        ans = item.get("answer")
-        if ans is None:
-            continue
-        t = str(ans).strip()
-        if t:
-            return t
-    return None
-
-
-def _resolve_calendly_field_answer(
-    qna: list,
-    user_question: str,
-    keywords: tuple[str, ...],
-    position: int | None,
-) -> str | None:
-    """Mapeo del usuario → keywords genéricas → posición fija (si position no es None)."""
-    custom = _qna_answer_by_question_hint(qna, user_question)
-    if custom:
-        return custom
-    by_kw = _qna_answer_by_keywords(qna, keywords) if keywords else None
-    if by_kw:
-        return by_kw
-    if position is not None:
-        return _qna_answer_at_position(qna, position)
-    return None
-
-
-def _ingresos_lead_from_qna_answer(raw: str | None) -> float | None:
-    if raw is None or not str(raw).strip():
-        return None
-    s = str(raw).strip().replace(",", ".").replace("$", "")
-    try:
-        return float(s)
-    except ValueError:
-        return None
 
 
 def _merge_calendly_email_notas(existing: str | None, email: str) -> str:
@@ -389,39 +260,17 @@ def _merge_calendly_email_notas(existing: str | None, email: str) -> str:
     return f"{base}\n{line}"
 
 
-def _append_calendly_nota(existing: str | None, nota_val: str) -> str:
-    val = (nota_val or "").strip()
-    if not val:
-        return (existing or "").strip()
-    line = f"Nota: {val}"
-    base = (existing or "").strip()
-    if not base:
-        return line
-    if val in base or line in base:
-        return base
-    return f"{base}\n{line}"
-
-
-def _find_lead_for_calendly(user_id: int, display_name: str, ig_hint: str) -> Lead | None:
-    """Misma cuenta: prioriza coincidencia por IG, luego por nombre (normalizado)."""
+def _find_lead_for_calendly(user_id: int, display_name: str) -> Lead | None:
+    """Misma cuenta: coincidencia por nombre normalizado."""
     nkey = _norm_name_for_match(display_name)
-    ig_key = _norm_ig(ig_hint)
+    if not nkey:
+        return None
     rows = [r for r in list(Lead.select()) if int(r.user_id) == user_id]
-
-    def _ts(row: Lead) -> float:
-        return row.created_at.timestamp() if row.created_at else 0.0
-
-    if ig_key:
-        ig_matches = [r for r in rows if _norm_ig(r.ig or "") == ig_key]
-        if ig_matches:
-            ig_matches.sort(key=_ts, reverse=True)
-            return ig_matches[0]
-    if nkey:
-        name_matches = [r for r in rows if _norm_name_for_match(r.nombre or "") == nkey]
-        if name_matches:
-            name_matches.sort(key=_ts, reverse=True)
-            return name_matches[0]
-    return None
+    name_matches = [r for r in rows if _norm_name_for_match(r.nombre or "") == nkey]
+    if not name_matches:
+        return None
+    name_matches.sort(key=lambda r: r.created_at.timestamp() if r.created_at else 0.0, reverse=True)
+    return name_matches[0]
 
 
 @router.post("/calendly")
@@ -456,11 +305,6 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
         except Exception:
             creds = {}
         signing_key = str(creds.get("signing_key") or "").strip()
-        q_telefono = str(creds.get("q_telefono") or "").strip()
-        q_instagram = str(creds.get("q_instagram") or "").strip()
-        q_avatar = str(creds.get("q_avatar") or "").strip()
-        q_ingresos = str(creds.get("q_ingresos") or "").strip()
-        q_notas = str(creds.get("q_notas") or "").strip()
 
     if signing_key:
         sig_header = request.headers.get("calendly-webhook-signature", "")
@@ -484,18 +328,6 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
 
     inner_payload = _calendly_inner_payload(body)
     flat = _flatten_calendly_invitee_payload(body)
-    qna = _calendly_qna_list(inner_payload)
-
-    telefono_q = _resolve_calendly_field_answer(
-        qna, q_telefono, ("telefono", "phone", "celular", "whatsapp"), 0
-    )
-    ig_q = _resolve_calendly_field_answer(qna, q_instagram, ("instagram", "ig", "@"), 1)
-    avatar_q = _resolve_calendly_field_answer(qna, q_avatar, ("avatar", "perfil", "tipo de perfil"), 2)
-    ingresos_raw = _resolve_calendly_field_answer(
-        qna, q_ingresos, ("ingresos", "generando", "facturando", "mensual"), 3
-    )
-    ingresos_lead_val = _ingresos_lead_from_qna_answer(ingresos_raw)
-    notas_q = _resolve_calendly_field_answer(qna, q_notas, (), None)
 
     display_name = _sanitize_webhook_display_name(
         str(inner_payload.get("name") or flat.get("name") or ""),
@@ -509,16 +341,6 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
         start_raw = start_raw.get("start_time")
     start_dt = _parse_calendly_start_time(str(start_raw) if start_raw else None)
 
-    telefono = (telefono_q or "") or _phone_from_calendly_payload(flat)
-    ig_hint = (ig_q or "").lstrip("@") or _ig_from_calendly_qa(flat)
-    if not ig_hint and "@" in display_name:
-        for p in display_name.split():
-            p = p.strip().lstrip("@")
-            if p and "@" not in p and len(p) > 1:
-                ig_hint = p
-                break
-    avatar_val = (avatar_q or "").strip()
-
     if not display_name and email:
         display_name = email.split("@")[0]
 
@@ -526,7 +348,7 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
     form_completed_at = _calendly_webhook_received_at(flat, inner_payload)
 
     with db_session:
-        row = _find_lead_for_calendly(user_id, display_name, ig_hint)
+        row = _find_lead_for_calendly(user_id, display_name)
         if row is not None:
             row.agendo = form_completed_at
             if start_dt is not None:
@@ -536,16 +358,6 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
                 row.nombre = display_name
             if email:
                 row.notas = _merge_calendly_email_notas(row.notas, email)
-            if telefono:
-                row.telefono = telefono
-            if ig_hint:
-                row.ig = ig_hint
-            if avatar_val:
-                row.avatar = avatar_val
-            if ingresos_lead_val is not None:
-                row.ingresos_lead = ingresos_lead_val
-            if notas_q:
-                row.notas = _append_calendly_nota(row.notas, notas_q)
             row.dias_para_agendar = compute_dias_para_agendar(row.primer_contacto, row.agendo)
         else:
             notas_parts = []
@@ -553,15 +365,9 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
                 notas_parts.append(f"Calendly email: {email}")
             if start_raw_label:
                 notas_parts.append(f"Cita: {start_raw_label}")
-            if notas_q:
-                notas_parts.append(f"Nota: {notas_q}")
             Lead(
                 user_id=user_id,
                 nombre=display_name or (email.split("@")[0] if email else "Invitado Calendly"),
-                ig=ig_hint or "",
-                telefono=telefono or "",
-                avatar=avatar_val or "",
-                ingresos_lead=ingresos_lead_val if ingresos_lead_val is not None else 0,
                 agendo=form_completed_at,
                 call=start_dt,
                 agendo_en="Chat",
