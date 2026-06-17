@@ -22,8 +22,8 @@ from src.models import ApiConnection, Lead
 router = APIRouter(prefix="/api/calendly", tags=["calendly"], redirect_slashes=False)
 
 _CALENDLY_API = "https://api.calendly.com"
-_MAX_EVENT_PAGES = 10
-_PAGE_COUNT = 50
+_MAX_EVENT_PAGES = 1
+_PAGE_COUNT = 20
 _INVITEE_REQUEST_DELAY_S = 0.3
 _RATE_LIMIT_MESSAGE = "Rate limit de Calendly alcanzado. Esperá 1 minuto y volvé a intentar."
 

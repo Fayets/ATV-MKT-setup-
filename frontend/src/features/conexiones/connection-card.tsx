@@ -153,7 +153,7 @@ function ConnectionCardInner({
     setSyncing(true)
     setSyncStatus('Sincronizando…')
     try {
-      const res = await fetch(`${resolveBackendBase(apiBase)}/api/calendly/sync`, {
+      const res = await fetch(`${resolveBackendBase(apiBase)}/calendly/sync`, {
         method: 'POST',
         headers: backendAuthHeaders(),
       })
