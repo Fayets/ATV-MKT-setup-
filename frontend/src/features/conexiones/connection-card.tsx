@@ -159,12 +159,13 @@ function ConnectionCardInner({
       })
       const data = (await res.json().catch(() => ({}))) as {
         detail?: string | { msg?: string }[]
+        error?: string
         synced?: number
         created?: number
         updated?: number
       }
       if (!res.ok) {
-        const d = data.detail
+        const d = data.error ?? data.detail
         const msg =
           typeof d === 'string' ? d : Array.isArray(d) ? JSON.stringify(d) : 'Error al sincronizar'
         setSyncStatus(`Error: ${msg}`)

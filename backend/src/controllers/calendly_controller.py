@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse
 from pony.orm import ObjectNotFound, db_session
 
 from src.controllers.webhook_controller import (
@@ -21,6 +23,13 @@ router = APIRouter(prefix="/api/calendly", tags=["calendly"], redirect_slashes=F
 
 _CALENDLY_API = "https://api.calendly.com"
 _MAX_EVENT_PAGES = 10
+_PAGE_COUNT = 50
+_INVITEE_REQUEST_DELAY_S = 0.3
+_RATE_LIMIT_MESSAGE = "Rate limit de Calendly alcanzado. Esperá 1 minuto y volvé a intentar."
+
+
+class CalendlyRateLimitError(Exception):
+    pass
 
 
 def require_user_id(
@@ -70,14 +79,40 @@ def _find_lead_by_email(user_id: int, email: str) -> Lead | None:
     return matches[0]
 
 
-def _calendly_get(client: httpx.Client, path: str, headers: dict[str, str], params: dict | None = None) -> dict:
+def _retry_after_seconds(response: httpx.Response) -> float:
+    raw = str(response.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return 60.0
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        return 60.0
+
+
+def _calendly_get(
+    client: httpx.Client,
+    path: str,
+    headers: dict[str, str],
+    params: dict | None = None,
+    *,
+    retried: bool = False,
+) -> dict:
     url = path if path.startswith("http") else f"{_CALENDLY_API}{path}"
     try:
         response = client.get(url, headers=headers, params=params)
+        if response.status_code == 429:
+            if not retried:
+                time.sleep(_retry_after_seconds(response))
+                return _calendly_get(client, path, headers, params, retried=True)
+            raise CalendlyRateLimitError
         response.raise_for_status()
         body = response.json()
         return body if isinstance(body, dict) else {}
+    except CalendlyRateLimitError:
+        raise
     except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            raise CalendlyRateLimitError from exc
         detail = ""
         try:
             detail = exc.response.text[:500]
@@ -109,7 +144,7 @@ def _fetch_scheduled_events(
     for _ in range(_MAX_EVENT_PAGES):
         params: dict[str, str | int] = {
             "user": user_uri,
-            "count": 100,
+            "count": _PAGE_COUNT,
             "sort": "start_time:desc",
         }
         if org_uri:
@@ -139,9 +174,11 @@ def _fetch_event_invitees(
     invitees: list[dict[str, Any]] = []
     page_token: str | None = None
 
-    for _ in range(_MAX_EVENT_PAGES):
+    for page_index in range(_MAX_EVENT_PAGES):
+        if page_index > 0:
+            time.sleep(_INVITEE_REQUEST_DELAY_S)
         path = f"/scheduled_events/{event_uuid}/invitees"
-        params: dict[str, str | int] = {"count": 100}
+        params: dict[str, str | int] = {"count": _PAGE_COUNT}
         if page_token:
             params["page_token"] = page_token
 
@@ -204,8 +241,15 @@ def _apply_invitee_to_lead(
 
 
 @router.post("/sync")
-def sync_calendly(user_id: Annotated[str, Depends(require_user_id)]) -> dict[str, int]:
+def sync_calendly(user_id: Annotated[str, Depends(require_user_id)]):
     uid = _uid_int(user_id)
+    try:
+        return _run_calendly_sync(uid)
+    except CalendlyRateLimitError:
+        return JSONResponse(status_code=429, content={"error": _RATE_LIMIT_MESSAGE})
+
+
+def _run_calendly_sync(uid: int) -> dict[str, int]:
     with db_session:
         try:
             conn = ApiConnection.get(user_id=uid, platform="calendly")
@@ -237,11 +281,15 @@ def sync_calendly(user_id: Annotated[str, Depends(require_user_id)]) -> dict[str
         events = _fetch_scheduled_events(client, headers, user_uri=user_uri, org_uri=org_uri)
 
         pending: list[dict[str, Any]] = []
+        invitee_request_count = 0
         for event in events:
             event_uuid = _uri_uuid(str(event.get("uri") or ""))
             if not event_uuid:
                 continue
             start_dt = _parse_calendly_start_time(str(event.get("start_time") or ""))
+            if invitee_request_count > 0:
+                time.sleep(_INVITEE_REQUEST_DELAY_S)
+            invitee_request_count += 1
             invitees = _fetch_event_invitees(client, headers, event_uuid)
 
             for invitee in invitees:
