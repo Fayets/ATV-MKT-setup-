@@ -105,6 +105,8 @@ export default function YouTubePage() {
   const [undoProgress, setUndoProgress] = useState(100)
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const undoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const detailPanelRef = useRef<HTMLDivElement>(null)
+  const gridCols = useGridColumns()
   const monthChoices = useMemo(() => {
     const merged = [...new Set([...availableMonths, ...recentMonthOptions(36)])]
     merged.sort((a, b) => b.localeCompare(a))
@@ -245,6 +247,18 @@ export default function YouTubePage() {
   useEffect(() => {
     setExpanded(null)
   }, [page])
+
+  useEffect(() => {
+    if (!expanded) return
+    const el = detailPanelRef.current
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [expanded])
+
+  const expandedVideo = expanded ? videos.find((v) => v.id === expanded) ?? null : null
+  const expandedIndex = expandedVideo ? videos.findIndex((v) => v.id === expandedVideo.id) : -1
+  const detailInsertBeforeIndex =
+    expandedIndex >= 0 ? Math.floor(expandedIndex / gridCols) * gridCols : -1
 
   const handleSync = async () => {
     if (!userId) {
@@ -478,16 +492,35 @@ export default function YouTubePage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {videos.map((v) => (
-            <VideoCard
-              key={v.id}
-              video={v}
-              isExpanded={expanded === v.id}
-              onToggle={() => setExpanded(expanded === v.id ? null : v.id)}
-              leads={leads}
-              onDelete={deleteVideo}
-            />
-          ))}
+          {videos.flatMap((v, i) => {
+            const nodes = []
+            if (i === detailInsertBeforeIndex && expandedVideo) {
+              nodes.push(
+                <div
+                  key={`detail-${expandedVideo.id}`}
+                  ref={detailPanelRef}
+                  className="col-span-1 scroll-mt-24 sm:col-span-2 xl:col-span-3"
+                >
+                  <VideoDetailPanel
+                    video={expandedVideo}
+                    leads={leads}
+                    onClose={() => setExpanded(null)}
+                    onDelete={deleteVideo}
+                  />
+                </div>,
+              )
+            }
+            nodes.push(
+              <VideoCard
+                key={v.id}
+                video={v}
+                leads={leads}
+                isSelected={expanded === v.id}
+                onToggle={() => setExpanded(expanded === v.id ? null : v.id)}
+              />,
+            )
+            return nodes
+          })}
         </div>
       )}
 
@@ -596,30 +629,9 @@ export default function YouTubePage() {
   )
 }
 
-/* ---------- Video Card ---------- */
+/* ---------- Video Card & Detail Panel ---------- */
 
-function VideoCard({
-  video: v,
-  isExpanded,
-  onToggle,
-  leads,
-  onDelete,
-}: {
-  video: Video
-  isExpanded: boolean
-  onToggle: () => void
-  leads: Lead[]
-  onDelete: (id: string) => void
-}) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  const cls = v.classification || {}
-  const title = v.title || 'Sin titulo'
-
-  useEffect(() => {
-    if (!isExpanded) return
-    panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [isExpanded, v.id])
-
+function useVideoLeadMetrics(v: Video, leads: Lead[]) {
   const relatedAgenda = leads.filter(
     (l) => String(l.agenda_point || '').trim().toLowerCase() === `youtube:${v.id}`.toLowerCase(),
   )
@@ -629,154 +641,188 @@ function VideoCard({
   const buyers = relatedAgenda.filter(
     (l) => l.status === 'Cerrado' || (Number(l.payment) || 0) > 0,
   )
+  return { relatedAgenda, visitas, comentarios, agendasMetric, buyers }
+}
 
-  const thumbBlock = (
-    <div
-      className={`relative shrink-0 overflow-hidden bg-[var(--bg4)] ${
-        isExpanded ? 'w-[200px] self-stretch sm:w-[260px] xl:w-[300px]' : 'aspect-video w-full'
-      }`}
-    >
-      {v.metrics?.thumbnail ? (
-        <img
-          src={v.metrics.thumbnail}
-          alt=""
-          className={`object-cover ${isExpanded ? 'h-full w-full min-h-[220px]' : 'h-full w-full transition-transform duration-300 group-hover:scale-[1.02]'}`}
-        />
-      ) : (
-        <div className={`flex items-center justify-center bg-gradient-to-br from-[var(--bg3)] to-[var(--bg4)] ${isExpanded ? 'h-full min-h-[220px]' : 'h-full w-full'}`}>
-          <span className="text-3xl text-[var(--text3)]">&#9654;</span>
+function VideoDetailPanel({
+  video: v,
+  leads,
+  onClose,
+  onDelete,
+}: {
+  video: Video
+  leads: Lead[]
+  onClose: () => void
+  onDelete: (id: string) => void
+}) {
+  const cls = v.classification || {}
+  const title = v.title || 'Sin titulo'
+  const { relatedAgenda, visitas, comentarios, agendasMetric, buyers } = useVideoLeadMetrics(v, leads)
+
+  return (
+    <div className="glass-card flex min-h-[320px] flex-row items-stretch overflow-hidden rounded-xl border border-[var(--border2)]">
+      <div className="relative w-[200px] shrink-0 self-stretch overflow-hidden bg-[var(--bg4)] sm:w-[260px] xl:w-[300px]">
+        {v.metrics?.thumbnail ? (
+          <img src={v.metrics.thumbnail} alt="" className="h-full min-h-[220px] w-full object-cover" />
+        ) : (
+          <div className="flex h-full min-h-[220px] items-center justify-center bg-gradient-to-br from-[var(--bg3)] to-[var(--bg4)]">
+            <span className="text-3xl text-[var(--text3)]">&#9654;</span>
+          </div>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-[15px] font-semibold leading-snug text-[var(--text)]">{title}</div>
+            <div className="mt-1 text-[11px] text-[var(--text3)]">{formatPublishedDate(v.published_at)}</div>
+          </div>
+          <div className="flex flex-shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => onDelete(v.id)}
+              className="rounded-md bg-[var(--bg4)] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text2)] hover:opacity-90"
+            >
+              Eliminar
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-[var(--border2)] bg-[var(--bg4)] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text3)] hover:text-[var(--text)]"
+            >
+              Cerrar
+            </button>
+          </div>
         </div>
-      )}
-      {!isExpanded ? (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-3 pb-3 pt-12">
-          <p className="line-clamp-2 text-[12px] font-medium leading-snug text-white">{title}</p>
+
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
+            <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Visitas</div>
+            <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--text)] sm:text-[17px]">{formatIntegerEsAr(visitas)}</div>
+          </div>
+          <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
+            <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Agendas</div>
+            <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--accent)] sm:text-[17px]">{formatIntegerEsAr(agendasMetric)}</div>
+          </div>
+          <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
+            <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Comentarios</div>
+            <div className="font-mono-num text-[17px] font-bold tabular-nums text-[var(--text)]">{formatIntegerEsAr(comentarios)}</div>
+          </div>
+          <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
+            <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Cash</div>
+            <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--green)] sm:text-[17px]">{formatCash(videoCashTotal(v))}</div>
+          </div>
         </div>
-      ) : null}
+
+        {v.url ? (
+          <a href={v.url} target="_blank" rel="noopener noreferrer" className="inline-flex w-fit items-center gap-2 rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-4 py-2 text-[12px] font-medium text-[var(--accent)] transition-colors hover:border-[var(--accent)]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Link al video de YouTube
+          </a>
+        ) : null}
+
+        {cls.description ? (
+          <div>
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Descripción</div>
+            <div className="max-h-[140px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3 text-[12px] leading-relaxed text-[var(--text2)]">{cls.description}</div>
+          </div>
+        ) : null}
+
+        {cls.summary ? (
+          <div>
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Resumen</div>
+            <div className="whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3 text-[13px] leading-relaxed text-[var(--text2)]">{cls.summary}</div>
+          </div>
+        ) : null}
+
+        {(v.metrics?.performanceHistory?.length || 0) > 1 ? (
+          <div>
+            <div className="mb-2 text-[9px] font-medium uppercase tracking-wider text-[var(--text3)]">Rendimiento</div>
+            <PerfChart data={v.metrics.performanceHistory || []} />
+          </div>
+        ) : null}
+
+        {buyers.length > 0 ? (
+          <div>
+            <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Leads que compraron por este video</div>
+            <div className="space-y-1.5">
+              {buyers.slice(0, 8).map((l, i) => (
+                <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg4)] px-3 py-2.5 text-[11px]">
+                  <span className="truncate font-medium text-[var(--text2)]">{l.client_name || 'Sin nombre'}</span>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    {l.program_offered ? <span className="hidden max-w-[100px] truncate text-[var(--text3)] sm:inline">{l.program_offered}</span> : null}
+                    <span className="font-semibold text-[var(--green)]">{formatCash(Number(l.payment) || 0)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : relatedAgenda.length > 0 ? (
+          <div>
+            <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Leads con punto de agenda en este video</div>
+            <div className="space-y-1.5">
+              {relatedAgenda.slice(0, 6).map((l, i) => (
+                <div key={i} className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg4)] px-3 py-2 text-[11px]">
+                  <span className="truncate text-[var(--text2)]">{l.client_name || 'Sin nombre'}</span>
+                  <span className={l.status === 'Cerrado' ? 'font-semibold text-[var(--green)]' : 'text-[var(--text3)]'}>{l.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
+}
 
-  if (isExpanded) {
-    return (
-      <div
-        ref={panelRef}
-        className="glass-card col-span-1 flex min-h-[320px] flex-row items-stretch overflow-hidden rounded-xl border border-[var(--border2)] sm:col-span-2 xl:col-span-3"
-      >
-        {thumbBlock}
-        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-[15px] font-semibold leading-snug text-[var(--text)]">{title}</div>
-              <div className="mt-1 text-[11px] text-[var(--text3)]">{formatPublishedDate(v.published_at)}</div>
-            </div>
-            <div className="flex flex-shrink-0 gap-2">
-              <button
-                type="button"
-                onClick={() => onDelete(v.id)}
-                className="rounded-md bg-[var(--bg4)] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text2)] hover:opacity-90"
-              >
-                Eliminar
-              </button>
-              <button type="button" onClick={onToggle} className="rounded-md border border-[var(--border2)] bg-[var(--bg4)] px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text3)] hover:text-[var(--text)]">
-                Cerrar
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
-              <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Visitas</div>
-              <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--text)] sm:text-[17px]">{formatIntegerEsAr(visitas)}</div>
-            </div>
-            <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
-              <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Agendas</div>
-              <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--accent)] sm:text-[17px]">{formatIntegerEsAr(agendasMetric)}</div>
-            </div>
-            <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
-              <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Comentarios</div>
-              <div className="font-mono-num text-[17px] font-bold tabular-nums text-[var(--text)]">{formatIntegerEsAr(comentarios)}</div>
-            </div>
-            <div className="rounded-lg bg-[var(--bg4)] p-3 text-center">
-              <div className="text-[8px] font-medium uppercase tracking-wider text-[var(--text3)]">Cash</div>
-              <div className="font-mono-num text-[15px] font-bold tabular-nums leading-tight text-[var(--green)] sm:text-[17px]">{formatCash(videoCashTotal(v))}</div>
-            </div>
-          </div>
-
-          {v.url ? (
-            <a href={v.url} target="_blank" rel="noopener noreferrer" className="inline-flex w-fit items-center gap-2 rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-4 py-2 text-[12px] font-medium text-[var(--accent)] transition-colors hover:border-[var(--accent)]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              Link al video de YouTube
-            </a>
-          ) : null}
-
-          {cls.description ? (
-            <div>
-              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Descripción</div>
-              <div className="max-h-[140px] overflow-y-auto whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3 text-[12px] leading-relaxed text-[var(--text2)]">{cls.description}</div>
-            </div>
-          ) : null}
-
-          {cls.summary ? (
-            <div>
-              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Resumen</div>
-              <div className="whitespace-pre-wrap rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3 text-[13px] leading-relaxed text-[var(--text2)]">{cls.summary}</div>
-            </div>
-          ) : null}
-
-          {(v.metrics?.performanceHistory?.length || 0) > 1 ? (
-            <div>
-              <div className="mb-2 text-[9px] font-medium uppercase tracking-wider text-[var(--text3)]">Rendimiento</div>
-              <PerfChart data={v.metrics.performanceHistory || []} />
-            </div>
-          ) : null}
-
-          {buyers.length > 0 ? (
-            <div>
-              <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Leads que compraron por este video</div>
-              <div className="space-y-1.5">
-                {buyers.slice(0, 8).map((l, i) => (
-                  <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg4)] px-3 py-2.5 text-[11px]">
-                    <span className="truncate font-medium text-[var(--text2)]">{l.client_name || 'Sin nombre'}</span>
-                    <div className="flex flex-shrink-0 items-center gap-2">
-                      {l.program_offered ? <span className="hidden max-w-[100px] truncate text-[var(--text3)] sm:inline">{l.program_offered}</span> : null}
-                      <span className="font-semibold text-[var(--green)]">{formatCash(Number(l.payment) || 0)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : relatedAgenda.length > 0 ? (
-            <div>
-              <div className="mb-2 text-[9px] font-semibold uppercase tracking-wider text-[var(--text3)]">Leads con punto de agenda en este video</div>
-              <div className="space-y-1.5">
-                {relatedAgenda.slice(0, 6).map((l, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg4)] px-3 py-2 text-[11px]">
-                    <span className="truncate text-[var(--text2)]">{l.client_name || 'Sin nombre'}</span>
-                    <span className={l.status === 'Cerrado' ? 'font-semibold text-[var(--green)]' : 'text-[var(--text3)]'}>{l.status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    )
-  }
+function VideoCard({
+  video: v,
+  leads,
+  isSelected,
+  onToggle,
+}: {
+  video: Video
+  leads: Lead[]
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  const title = v.title || 'Sin titulo'
+  const { visitas, comentarios, agendasMetric } = useVideoLeadMetrics(v, leads)
 
   return (
     <div
       role="button"
       tabIndex={0}
       aria-label={`Abrir detalle: ${title}`}
+      aria-pressed={isSelected}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onToggle()
         }
       }}
-      className="glass-card group w-full cursor-pointer overflow-hidden rounded-xl border border-[var(--border2)] text-left transition-shadow hover:border-[var(--text3)]/30 hover:shadow-md"
+      className={`glass-card group w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-shadow hover:shadow-md ${
+        isSelected
+          ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/40'
+          : 'border-[var(--border2)] hover:border-[var(--text3)]/30'
+      }`}
       onClick={onToggle}
     >
-      {thumbBlock}
+      <div className="relative aspect-video w-full shrink-0 overflow-hidden bg-[var(--bg4)]">
+        {v.metrics?.thumbnail ? (
+          <img
+            src={v.metrics.thumbnail}
+            alt=""
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[var(--bg3)] to-[var(--bg4)]">
+            <span className="text-3xl text-[var(--text3)]">&#9654;</span>
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent px-3 pb-3 pt-12">
+          <p className="line-clamp-2 text-[12px] font-medium leading-snug text-white">{title}</p>
+        </div>
+      </div>
       <div className="grid grid-cols-2 divide-x divide-[var(--border)] border-t border-[var(--border)] bg-[var(--bg3)] sm:grid-cols-4">
         <div className="px-2 py-3 text-center sm:px-3">
           <div className="text-[8px] font-semibold uppercase tracking-wider text-[var(--text3)] sm:text-[9px]">Visitas</div>
@@ -835,6 +881,21 @@ function PerfChart({ data }: { data: PerfSnapshot[] }) {
       {[0, pts.length - 1].map(i => <text key={i} x={pts[i].x} y={pT + cH + 12} fill="var(--text3)" fontSize="7" textAnchor="middle">{pts[i].date.split('T')[0].slice(5)}</text>)}
     </svg>
   )
+}
+
+function useGridColumns(): number {
+  const [cols, setCols] = useState(3)
+  useEffect(() => {
+    const update = () => {
+      if (window.matchMedia('(min-width: 1280px)').matches) setCols(3)
+      else if (window.matchMedia('(min-width: 640px)').matches) setCols(2)
+      else setCols(1)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return cols
 }
 
 function recentMonthOptions(count: number): string[] {
