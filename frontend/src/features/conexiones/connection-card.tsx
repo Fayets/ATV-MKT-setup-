@@ -207,22 +207,29 @@ function ConnectionCardInner({
 
   const calendlySyncBlock =
     platform.key === 'calendly' ? (
-      <div className="mt-3 space-y-3">
-        <MonthSelector
-          month={calendlySyncMonth}
-          options={calendlySyncMonthOptions}
-          onChange={setCalendlySyncMonth}
-          label="Mes a sincronizar"
-        />
-        <button
-          type="button"
-          disabled={syncing}
-          onClick={() => void syncCalendly()}
-          className="rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text2)] disabled:opacity-50"
-        >
-          {syncing ? 'Sincronizando…' : 'Sincronizar'}
-        </button>
-        {syncStatus ? <p className="text-[12px] text-[var(--text2)]">{syncStatus}</p> : null}
+      <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
+        <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+          Sincronizar leads
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="w-full sm:w-auto sm:min-w-[200px]">
+            <MonthSelector
+              month={calendlySyncMonth}
+              options={calendlySyncMonthOptions}
+              onChange={setCalendlySyncMonth}
+              label="Mes"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={() => void syncCalendly()}
+            className="rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text)] disabled:opacity-50 sm:mb-0.5"
+          >
+            {syncing ? 'Sincronizando…' : 'Sincronizar'}
+          </button>
+        </div>
+        {syncStatus ? <p className="mt-3 text-[12px] text-[var(--text2)]">{syncStatus}</p> : null}
       </div>
     ) : null
 
@@ -356,8 +363,8 @@ function ConnectionCardInner({
             </button>
             {status === 'success' && <p className="text-sm text-[var(--green)]">Guardado.</p>}
             {status === 'error' && <p className="text-sm text-[var(--text2)]">{errorMsg}</p>}
-            {webhookBlock}
             {calendlySyncBlock}
+            {webhookBlock}
           </div>
         )}
       </div>
@@ -423,8 +430,8 @@ function ConnectionCardInner({
               )}
             </div>
           )}
-          {webhookBlock}
           {calendlySyncBlock}
+          {webhookBlock}
         </div>
       )}
     </div>
