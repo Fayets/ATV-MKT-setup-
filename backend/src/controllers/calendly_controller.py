@@ -19,7 +19,7 @@ from src.controllers.webhook_controller import (
 from src.lead_display_utils import compute_dias_para_agendar
 from src.models import ApiConnection, Lead
 
-router = APIRouter(prefix="/api/calendly", tags=["calendly"], redirect_slashes=False)
+router = APIRouter(prefix="/calendly", tags=["calendly"], redirect_slashes=False)
 
 _CALENDLY_API = "https://api.calendly.com"
 _MAX_EVENT_PAGES = 1
