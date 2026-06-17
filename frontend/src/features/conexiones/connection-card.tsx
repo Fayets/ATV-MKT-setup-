@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { backendAuthHeaders } from '@/lib/api'
+import { MonthSelector } from '@/shared/components/month-selector'
+import { useMonth } from '@/shared/hooks/use-month'
 import type { ConnectionPlatform } from './connection-platforms'
 
 export type ConnectionRow = {
@@ -69,6 +71,12 @@ function ConnectionCardInner({
   const [calendlyWebhookInfo, setCalendlyWebhookInfo] = useState<CalendlyWebhookInfo | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
+  const {
+    month: calendlySyncMonth,
+    setMonth: setCalendlySyncMonth,
+    options: calendlySyncMonthOptions,
+    label: calendlySyncMonthLabel,
+  } = useMonth()
 
   const isConnected =
     !platform.infoOnly && connection && Object.values(connection.credentials).some((v) => v?.trim())
@@ -155,7 +163,8 @@ function ConnectionCardInner({
     try {
       const res = await fetch(`${resolveBackendBase(apiBase)}/calendly/sync`, {
         method: 'POST',
-        headers: backendAuthHeaders(),
+        headers: backendAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ month: calendlySyncMonth }),
       })
       const data = (await res.json().catch(() => ({}))) as {
         detail?: string | { msg?: string }[]
@@ -163,6 +172,7 @@ function ConnectionCardInner({
         synced?: number
         created?: number
         updated?: number
+        month?: string | null
       }
       if (!res.ok) {
         const d = data.error ?? data.detail
@@ -171,18 +181,39 @@ function ConnectionCardInner({
         setSyncStatus(`Error: ${msg}`)
         return
       }
-      setSyncStatus(`${data.created ?? 0} leads creados, ${data.updated ?? 0} actualizados.`)
+      const monthLabel =
+        data.month && typeof data.month === 'string'
+          ? calendlySyncMonthOptions.find((o) => o.value === data.month)?.label ?? calendlySyncMonthLabel
+          : calendlySyncMonthLabel
+      setSyncStatus(
+        `${monthLabel}: ${data.created ?? 0} leads creados, ${data.updated ?? 0} actualizados.`,
+      )
       await onSyncComplete?.()
     } catch (e) {
       setSyncStatus(e instanceof Error ? e.message : 'Error al sincronizar')
     } finally {
       setSyncing(false)
     }
-  }, [apiBase, connection?.credentials?.api_key, form.api_key, onSyncComplete, platform.key])
+  }, [
+    apiBase,
+    calendlySyncMonth,
+    calendlySyncMonthLabel,
+    calendlySyncMonthOptions,
+    connection?.credentials?.api_key,
+    form.api_key,
+    onSyncComplete,
+    platform.key,
+  ])
 
   const calendlySyncBlock =
     platform.key === 'calendly' ? (
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-3">
+        <MonthSelector
+          month={calendlySyncMonth}
+          options={calendlySyncMonthOptions}
+          onChange={setCalendlySyncMonth}
+          label="Mes a sincronizar"
+        />
         <button
           type="button"
           disabled={syncing}

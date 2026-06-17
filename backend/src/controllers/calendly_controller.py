@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import calendar
 import re
 import time
 from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pony.orm import ObjectNotFound, db_session
+from pydantic import BaseModel, Field
 
 from src.controllers.webhook_controller import (
     _merge_calendly_email_notas,
@@ -23,9 +25,15 @@ router = APIRouter(prefix="/calendly", tags=["calendly"], redirect_slashes=False
 
 _CALENDLY_API = "https://api.calendly.com"
 _MAX_EVENT_PAGES = 1
+_MAX_EVENT_PAGES_MONTH = 5
 _PAGE_COUNT = 20
 _INVITEE_REQUEST_DELAY_S = 0.3
 _RATE_LIMIT_MESSAGE = "Rate limit de Calendly alcanzado. Esperá 1 minuto y volvé a intentar."
+_MONTH_RE = re.compile(r"^(\d{4})-(\d{2})$")
+
+
+class CalendlySyncRequest(BaseModel):
+    month: str | None = Field(default=None, description="YYYY-MM opcional para filtrar eventos")
 
 
 class CalendlyRateLimitError(Exception):
@@ -52,6 +60,29 @@ def _uid_int(user_id: str) -> int:
 
 def _uri_uuid(uri: str) -> str:
     return str(uri or "").strip().rstrip("/").split("/")[-1]
+
+
+def _month_time_bounds(month: str) -> tuple[str, str]:
+    match = _MONTH_RE.match(month.strip())
+    if not match:
+        raise HTTPException(status_code=400, detail="month debe tener formato YYYY-MM.")
+    year = int(match.group(1))
+    mon = int(match.group(2))
+    if mon < 1 or mon > 12:
+        raise HTTPException(status_code=400, detail="month debe tener formato YYYY-MM.")
+    last_day = calendar.monthrange(year, mon)[1]
+    min_start = f"{year:04d}-{mon:02d}-01T00:00:00Z"
+    max_start = f"{year:04d}-{mon:02d}-{last_day:02d}T23:59:59Z"
+    return min_start, max_start
+
+
+def _resolve_sync_month(body: CalendlySyncRequest | None, month_query: str | None) -> str | None:
+    raw = ""
+    if body and body.month:
+        raw = body.month.strip()
+    elif month_query:
+        raw = month_query.strip()
+    return raw or None
 
 
 def _email_from_notas(notas: str | None) -> str:
@@ -135,11 +166,17 @@ def _fetch_scheduled_events(
     *,
     user_uri: str,
     org_uri: str,
+    month: str | None = None,
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     page_token: str | None = None
+    min_start: str | None = None
+    max_start: str | None = None
+    if month:
+        min_start, max_start = _month_time_bounds(month)
+    max_pages = _MAX_EVENT_PAGES_MONTH if month else _MAX_EVENT_PAGES
 
-    for _ in range(_MAX_EVENT_PAGES):
+    for _ in range(max_pages):
         params: dict[str, str | int] = {
             "user": user_uri,
             "count": _PAGE_COUNT,
@@ -147,6 +184,9 @@ def _fetch_scheduled_events(
         }
         if org_uri:
             params["organization"] = org_uri
+        if min_start and max_start:
+            params["min_start_time"] = min_start
+            params["max_start_time"] = max_start
         if page_token:
             params["page_token"] = page_token
 
@@ -240,15 +280,20 @@ def _apply_invitee_to_lead(
 
 
 @router.post("/sync")
-def sync_calendly(user_id: Annotated[str, Depends(require_user_id)]):
+def sync_calendly(
+    user_id: Annotated[str, Depends(require_user_id)],
+    body: CalendlySyncRequest | None = None,
+    month: str | None = Query(default=None, description="YYYY-MM opcional"),
+):
     uid = _uid_int(user_id)
+    sync_month = _resolve_sync_month(body, month)
     try:
-        return _run_calendly_sync(uid)
+        return _run_calendly_sync(uid, month=sync_month)
     except CalendlyRateLimitError:
         return JSONResponse(status_code=429, content={"error": _RATE_LIMIT_MESSAGE})
 
 
-def _run_calendly_sync(uid: int) -> dict[str, int]:
+def _run_calendly_sync(uid: int, *, month: str | None = None) -> dict[str, Any]:
     with db_session:
         try:
             conn = ApiConnection.get(user_id=uid, platform="calendly")
@@ -277,7 +322,13 @@ def _run_calendly_sync(uid: int) -> dict[str, int]:
         if not user_uri:
             raise HTTPException(status_code=502, detail="Calendly no devolvió current_user.uri.")
 
-        events = _fetch_scheduled_events(client, headers, user_uri=user_uri, org_uri=org_uri)
+        events = _fetch_scheduled_events(
+            client,
+            headers,
+            user_uri=user_uri,
+            org_uri=org_uri,
+            month=month,
+        )
 
         pending: list[dict[str, Any]] = []
         invitee_request_count = 0
@@ -325,7 +376,7 @@ def _run_calendly_sync(uid: int) -> dict[str, int]:
     _touch_calendly_last_sync(uid)
 
     synced = created + updated
-    return {"synced": synced, "created": created, "updated": updated}
+    return {"synced": synced, "created": created, "updated": updated, "month": month}
 
 
 @db_session
