@@ -120,19 +120,32 @@ def _retry_after_seconds(response: httpx.Response) -> float:
 
 def _calendly_get(
     client: httpx.Client,
-    path: str,
     headers: dict[str, str],
-    params: dict | None = None,
     *,
+    url: str | None = None,
+    path: str = "",
+    params: dict | None = None,
     retried: bool = False,
 ) -> dict:
-    url = path if path.startswith("http") else f"{_CALENDLY_API}{path}"
+    if url:
+        request_url = url
+        request_params = None
+    else:
+        request_url = path if path.startswith("http") else f"{_CALENDLY_API}{path}"
+        request_params = params
     try:
-        response = client.get(url, headers=headers, params=params)
+        response = client.get(request_url, headers=headers, params=request_params)
         if response.status_code == 429:
             if not retried:
                 time.sleep(_retry_after_seconds(response))
-                return _calendly_get(client, path, headers, params, retried=True)
+                return _calendly_get(
+                    client,
+                    headers,
+                    url=url,
+                    path=path,
+                    params=params,
+                    retried=True,
+                )
             raise CalendlyRateLimitError
         response.raise_for_status()
         body = response.json()
@@ -160,6 +173,11 @@ def _calendly_get(
         raise HTTPException(status_code=502, detail=f"No se pudo contactar a Calendly: {exc!s}") from exc
 
 
+def _pagination_next_page(data: dict) -> str:
+    pagination = data.get("pagination") if isinstance(data.get("pagination"), dict) else {}
+    return str(pagination.get("next_page") or "").strip()
+
+
 def _fetch_scheduled_events(
     client: httpx.Client,
     headers: dict[str, str],
@@ -169,37 +187,36 @@ def _fetch_scheduled_events(
     month: str | None = None,
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    page_token: str | None = None
     min_start: str | None = None
     max_start: str | None = None
     if month:
         min_start, max_start = _month_time_bounds(month)
     max_pages = _MAX_EVENT_PAGES_MONTH if month else _MAX_EVENT_PAGES
+    next_page_url: str | None = None
 
     for _ in range(max_pages):
-        params: dict[str, str | int] = {
-            "user": user_uri,
-            "count": _PAGE_COUNT,
-            "sort": "start_time:desc",
-        }
-        if org_uri:
-            params["organization"] = org_uri
-        if min_start and max_start:
-            params["min_start_time"] = min_start
-            params["max_start_time"] = max_start
-        if page_token:
-            params["page_token"] = page_token
+        if next_page_url:
+            data = _calendly_get(client, headers, url=next_page_url)
+        else:
+            params: dict[str, str | int] = {
+                "user": user_uri,
+                "count": _PAGE_COUNT,
+                "sort": "start_time:desc",
+            }
+            if org_uri:
+                params["organization"] = org_uri
+            if min_start and max_start:
+                params["min_start_time"] = min_start
+                params["max_start_time"] = max_start
+            data = _calendly_get(client, headers, path="/scheduled_events", params=params)
 
-        data = _calendly_get(client, "/scheduled_events", headers, params)
         collection = data.get("collection") or []
         if isinstance(collection, list):
             events.extend(item for item in collection if isinstance(item, dict))
 
-        pagination = data.get("pagination") if isinstance(data.get("pagination"), dict) else {}
-        next_token = str(pagination.get("next_page_token") or "").strip()
-        if not next_token:
+        next_page_url = _pagination_next_page(data)
+        if not next_page_url:
             break
-        page_token = next_token
 
     return events
 
@@ -210,26 +227,28 @@ def _fetch_event_invitees(
     event_uuid: str,
 ) -> list[dict[str, Any]]:
     invitees: list[dict[str, Any]] = []
-    page_token: str | None = None
+    next_page_url: str | None = None
 
     for page_index in range(_MAX_EVENT_PAGES):
         if page_index > 0:
             time.sleep(_INVITEE_REQUEST_DELAY_S)
-        path = f"/scheduled_events/{event_uuid}/invitees"
-        params: dict[str, str | int] = {"count": _PAGE_COUNT}
-        if page_token:
-            params["page_token"] = page_token
+        if next_page_url:
+            data = _calendly_get(client, headers, url=next_page_url)
+        else:
+            data = _calendly_get(
+                client,
+                headers,
+                path=f"/scheduled_events/{event_uuid}/invitees",
+                params={"count": _PAGE_COUNT},
+            )
 
-        data = _calendly_get(client, path, headers, params)
         collection = data.get("collection") or []
         if isinstance(collection, list):
             invitees.extend(item for item in collection if isinstance(item, dict))
 
-        pagination = data.get("pagination") if isinstance(data.get("pagination"), dict) else {}
-        next_token = str(pagination.get("next_page_token") or "").strip()
-        if not next_token:
+        next_page_url = _pagination_next_page(data)
+        if not next_page_url:
             break
-        page_token = next_token
 
     return invitees
 
@@ -315,7 +334,7 @@ def _run_calendly_sync(uid: int, *, month: str | None = None) -> dict[str, Any]:
     updated = 0
 
     with httpx.Client(timeout=60.0) as client:
-        me = _calendly_get(client, "/users/me", headers)
+        me = _calendly_get(client, headers, path="/users/me")
         resource = me.get("resource") if isinstance(me.get("resource"), dict) else {}
         user_uri = str(resource.get("uri") or "").strip()
         org_uri = str(resource.get("current_organization") or "").strip()
