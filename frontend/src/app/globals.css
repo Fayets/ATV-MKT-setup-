@@ -1,0 +1,363 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Accent — monocromático (setup / auth) */
+  --accent: #FFFFFF;
+  --accent-glow: rgba(255, 255, 255, 0.2);
+  --accent-faint: rgba(255, 255, 255, 0.1);
+
+  /* Surfaces — deep black layered depth */
+  --bg: #050505;
+  --bg2: #0C0C0E;
+  --bg3: #141416;
+  --bg4: #1E1E22;
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.05);
+  --border2: rgba(255, 255, 255, 0.08);
+  --border-red: var(--border2);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
+
+  /* Text hierarchy */
+  --text: #FAFAFA;
+  --text2: #A1A1AA;
+  --text3: #52525B;
+
+  /* Aliases monocromáticos (sin rojo legacy) */
+  --red: var(--text2);
+  --red-glow: var(--accent-faint);
+  --red-faint: var(--accent-faint);
+  --red-light: var(--text2);
+  --red-dark: var(--text3);
+
+  /* Layout helpers */
+  --topbar-bg: rgba(9, 9, 11, 0.8);
+  --nav-hover: rgba(255, 255, 255, 0.03);
+
+  /* Semantic */
+  --green: #22C55E;
+  --amber: #F59E0B;
+
+  /* Auth / setup */
+  --auth-detail: #FFFFFF;
+  --auth-detail-soft: rgba(255, 255, 255, 0.92);
+  --auth-cta-bg: #FFFFFF;
+  --auth-cta-text: #111111;
+  --auth-focus-ring: rgba(255, 255, 255, 0.25);
+  --surface-accent-rgb: 255, 255, 255;
+
+  /* Auth login — dorado apagado */
+  --auth-gold: #8B7340;
+  --auth-gold-bright: #9A8248;
+  --auth-gold-dark: #6E5A2E;
+  --auth-gold-border: rgba(139, 115, 64, 0.28);
+}
+
+[data-theme='light'] {
+  --accent: #111111;
+  --accent-glow: rgba(17, 17, 17, 0.12);
+  --accent-faint: rgba(17, 17, 17, 0.08);
+  --auth-detail: #111111;
+  --auth-detail-soft: rgba(17, 17, 17, 0.92);
+  --auth-cta-bg: #111111;
+  --auth-cta-text: #FFFFFF;
+  --auth-focus-ring: rgba(17, 17, 17, 0.2);
+  --surface-accent-rgb: 17, 17, 17;
+  --bg: #f4f4f5;
+  --bg2: #ffffff;
+  --bg3: #fafafa;
+  --bg4: #e4e4e7;
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 1px var(--border);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--border);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px var(--border);
+  --text: #18181b;
+  --text2: #52525b;
+  --text3: #71717a;
+  --topbar-bg: rgba(255, 255, 255, 0.88);
+  --nav-hover: rgba(0, 0, 0, 0.05);
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--bg)] text-[var(--text)] antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--accent-faint);
+    color: var(--text);
+  }
+
+  [data-theme='light'] ::selection {
+    background: var(--accent-faint);
+    color: var(--text);
+  }
+
+  ::-webkit-scrollbar {
+    width: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  [data-theme='light'] ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.12);
+  }
+  [data-theme='light'] ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.18);
+  }
+}
+
+@layer components {
+  /* Tarjeta opaca: sin backdrop-filter ni capas pseudo (mejor FPS). */
+  .glass-card {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid var(--border2);
+    background: var(--bg2);
+    box-shadow: var(--shadow-sm);
+    contain: layout style paint;
+    transition: border-color 0.15s ease;
+  }
+  .glass-card:hover {
+    border-color: rgba(var(--surface-accent-rgb), 0.28);
+  }
+  .glass-card.glass-card--performant {
+    contain: layout style paint;
+  }
+
+  .panel-card {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid var(--border2);
+    background: var(--bg2);
+    box-shadow: var(--shadow-sm);
+    contain: layout style paint;
+  }
+  .panel-card:hover {
+    border-color: rgba(var(--surface-accent-rgb), 0.35);
+  }
+
+  /* Modal: superficie opaca */
+  .modal-panel {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+    position: relative;
+    overflow-x: hidden;
+  }
+  [data-theme='light'] .modal-panel {
+    background: var(--bg2);
+    border-color: var(--border2);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+  }
+
+  [data-theme='light'] .glass-card:hover {
+    border-color: rgba(var(--surface-accent-rgb), 0.22);
+  }
+
+  .glass-surface {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+  }
+
+  /* Botones primarios: contraste correcto en oscuro (accent blanco) y claro (accent negro). */
+  .btn-primary {
+    background-color: var(--auth-cta-bg);
+    color: var(--auth-cta-text);
+  }
+  .btn-primary:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .segment-group {
+    display: inline-flex;
+    gap: 0.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border2);
+    background: var(--bg3);
+    padding: 0.25rem;
+  }
+  .segment-tab {
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--text2);
+    transition: color 0.15s ease, background-color 0.15s ease;
+  }
+  .segment-tab:hover {
+    color: var(--text);
+    background: var(--nav-hover);
+  }
+  .segment-tab-active {
+    background-color: var(--auth-cta-bg);
+    color: var(--auth-cta-text);
+  }
+  .segment-tab-active:hover {
+    background-color: var(--auth-cta-bg);
+    color: var(--auth-cta-text);
+    opacity: 0.92;
+  }
+
+  /* Accent line on top of cards */
+  .accent-top::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent 70%);
+    border-radius: 12px 12px 0 0;
+  }
+
+  /* Login card — acento dorado liviano, sin blur ni capas pesadas */
+  .auth-card {
+    position: relative;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: var(--bg2);
+    box-shadow: var(--shadow-sm);
+    contain: layout style paint;
+  }
+
+  .auth-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(90deg, var(--auth-gold-border) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .auth-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    border-radius: 16px 0 0 16px;
+    background: linear-gradient(180deg, var(--auth-gold-border) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .auth-shell {
+    --auth-detail: var(--auth-gold-bright);
+    --auth-cta-bg: var(--auth-gold);
+    --auth-cta-text: #F5F5F5;
+    --auth-focus-ring: rgba(139, 115, 64, 0.35);
+  }
+
+  .auth-cta {
+    background: var(--auth-gold);
+    color: var(--auth-cta-text);
+  }
+
+  .auth-cta:hover:not(:disabled) {
+    background: var(--auth-gold-bright);
+  }
+
+  .auth-cta:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .auth-input:focus {
+    border-color: var(--auth-gold-border);
+    outline: 1px solid var(--auth-focus-ring);
+    outline-offset: 0;
+  }
+
+  /* Font mono for numbers */
+  .font-mono-num {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    letter-spacing: -0.04em;
+  }
+
+  /*
+   * Leads grid: `border-collapse: collapse` rompe fondos en celdas sticky (se ve el scroll detrás).
+   * Checkbox + # + Nombre van juntos sticky; si solo Nombre fuera sticky con left: 88px, al hacer scroll
+   * quedaría un hueco a la izquierda donde se ve el contenido pasando.
+   */
+  .leads-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    /* Evita que una celda con texto sin espacios ensanche toda la columna; los anchos vienen de <th>/<td>. */
+    table-layout: fixed;
+  }
+  .leads-table__sticky-frozen {
+    position: sticky;
+    background-color: var(--bg2);
+    background-clip: padding-box;
+  }
+  .leads-table__sticky-check {
+    left: 0;
+    z-index: 23;
+    border-right: 1px solid var(--border2);
+  }
+  .leads-table__sticky-num {
+    left: var(--leads-check-w, 48px);
+    z-index: 24;
+    border-right: 1px solid var(--border2);
+  }
+  .leads-table__sticky-name {
+    left: calc(var(--leads-check-w, 48px) + var(--leads-num-w, 40px));
+    z-index: 25;
+    border-right: 1px solid var(--border2);
+    box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.42);
+  }
+  .leads-table thead .leads-table__sticky-frozen {
+    background-color: var(--bg3);
+  }
+  .leads-table thead .leads-table__sticky-check {
+    z-index: 33;
+  }
+  .leads-table thead .leads-table__sticky-num {
+    z-index: 34;
+  }
+  .leads-table thead .leads-table__sticky-name {
+    z-index: 35;
+    box-shadow: 4px 0 14px -6px rgba(0, 0, 0, 0.5);
+  }
+  .leads-table tr.leads-table__row--selected .leads-table__sticky-frozen {
+    background-color: color-mix(in srgb, var(--accent) 11%, var(--bg2));
+  }
+  .leads-table tr:not(.leads-table__row--selected):hover .leads-table__sticky-frozen {
+    background-color: color-mix(in srgb, white 4%, var(--bg2));
+  }
+  [data-theme='light'] .leads-table tr:not(.leads-table__row--selected):hover .leads-table__sticky-frozen {
+    background-color: color-mix(in srgb, black 5%, var(--bg2));
+  }
+  .leads-table tr.leads-table__row--selected:hover .leads-table__sticky-frozen {
+    background-color: color-mix(in srgb, var(--accent) 15%, var(--bg2));
+  }
+}

@@ -1,0 +1,340 @@
+'use client'
+
+import Link from 'next/link'
+import { memo, useCallback, useEffect, useState } from 'react'
+import { backendAuthHeaders } from '@/lib/api'
+import type { ConnectionPlatform } from './connection-platforms'
+
+export type ConnectionRow = {
+  platform: string
+  credentials: Record<string, string>
+  last_sync_at: string | null
+}
+
+const WEBHOOK_PLATFORMS = ['manychat', 'calendly'] as const
+
+const PANEL = 'panel-card'
+const PANEL_SETUP = 'panel-card flex min-h-[260px] flex-col p-5'
+
+type ManychatWebhookInfo = {
+  webhook_url: string
+  webhook_token: string
+}
+
+type CalendlyWebhookInfo = {
+  webhook_url: string
+}
+
+function resolveBackendBase(apiBase: string): string {
+  const base = apiBase.replace(/\/$/, '')
+  if (base.startsWith('http')) return base
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}${base}`
+}
+
+type Props = {
+  platform: ConnectionPlatform
+  connection?: ConnectionRow
+  cardLayout?: 'default' | 'setup'
+  apiBase: string
+  onSave: (credentials: Record<string, string>) => void | Promise<void>
+}
+
+function ConnectionCardInner({
+  platform,
+  connection,
+  cardLayout = 'default',
+  apiBase,
+  onSave,
+}: Props) {
+  const isSetup = cardLayout === 'setup'
+  const [form, setForm] = useState<Record<string, string>>({})
+  const [expanded, setExpanded] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [manychatWebhookInfo, setManychatWebhookInfo] = useState<ManychatWebhookInfo | null>(null)
+  const [calendlyWebhookInfo, setCalendlyWebhookInfo] = useState<CalendlyWebhookInfo | null>(null)
+
+  const isConnected =
+    !platform.infoOnly && connection && Object.values(connection.credentials).some((v) => v?.trim())
+
+  useEffect(() => {
+    if (connection?.credentials) setForm(connection.credentials)
+  }, [connection])
+
+  useEffect(() => {
+    const infoPath =
+      platform.key === 'manychat'
+        ? 'manychat-webhook-info'
+        : platform.key === 'calendly'
+          ? 'calendly-webhook-info'
+          : null
+    if (!infoPath) return
+
+    const url = `${resolveBackendBase(apiBase)}/conexiones/${infoPath}`
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(url, { headers: backendAuthHeaders() })
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as ManychatWebhookInfo | CalendlyWebhookInfo
+        if (cancelled || !data.webhook_url) return
+        if (platform.key === 'manychat' && 'webhook_token' in data && data.webhook_token) {
+          setManychatWebhookInfo(data as ManychatWebhookInfo)
+        }
+        if (platform.key === 'calendly') {
+          setCalendlyWebhookInfo({ webhook_url: data.webhook_url })
+        }
+      } catch {
+        /* sin sesión (setup) o servidor sin URL configurada */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [apiBase, platform.key])
+
+  const webhookUrl = useCallback(() => {
+    if (platform.key === 'manychat' && manychatWebhookInfo?.webhook_url) {
+      return manychatWebhookInfo.webhook_url
+    }
+    if (platform.key === 'calendly' && calendlyWebhookInfo?.webhook_url) {
+      return calendlyWebhookInfo.webhook_url
+    }
+    if (typeof window === 'undefined') return ''
+    const origin = window.location.origin
+    const backendBase = resolveBackendBase(apiBase)
+    if (platform.key === 'manychat') return `${backendBase}/webhooks/manychat`
+    if (platform.key === 'calendly') return `${backendBase}/webhooks/calendly`
+    return `${origin}/api/webhooks/${platform.key}`
+  }, [apiBase, manychatWebhookInfo, calendlyWebhookInfo, platform.key])
+
+  const save = useCallback(
+    async (creds: Record<string, string>) => {
+      setStatus('loading')
+      setErrorMsg('')
+      const payload = { ...creds }
+      if (
+        platform.key !== 'manychat' &&
+        WEBHOOK_PLATFORMS.includes(platform.key as (typeof WEBHOOK_PLATFORMS)[number]) &&
+        !payload.webhook_token
+      ) {
+        payload.webhook_token = crypto.randomUUID().replace(/-/g, '')
+      }
+      try {
+        await onSave(payload)
+        setStatus('success')
+        setTimeout(() => setStatus('idle'), 2000)
+      } catch (e) {
+        setStatus('error')
+        setErrorMsg(e instanceof Error ? e.message : 'Error al guardar')
+      }
+    },
+    [onSave, platform.key],
+  )
+
+  const guideBlock = (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
+      <h4 className="mb-2 text-[12px] font-semibold text-[var(--accent)]">{platform.guide.title}</h4>
+      <ol className={isSetup ? 'list-decimal space-y-2 pl-4 text-[12px] text-[var(--text2)]' : 'space-y-2.5'}>
+        {platform.guide.steps.map((step, i) =>
+          isSetup ? (
+            <li key={i}>{step}</li>
+          ) : (
+            <li key={i} className="flex gap-3 text-[12px] leading-relaxed text-[var(--text2)]">
+              <span className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-[var(--auth-cta-bg)] text-[10px] font-bold text-[var(--auth-cta-text)]">
+                {i + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ),
+        )}
+      </ol>
+    </div>
+  )
+
+  const fieldsBlock = (
+    <div className={isSetup ? 'space-y-3' : 'grid grid-cols-1 gap-3 md:grid-cols-2'}>
+      {platform.fields.map((f) => (
+        <div key={f.key} className={!isSetup && f.span === 2 ? 'md:col-span-2' : undefined}>
+          <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+            {f.label}
+          </label>
+          <input
+            type={f.type || 'text'}
+            value={form[f.key] || ''}
+            onChange={(e) => setForm((prev) => ({ ...prev, [f.key]: e.target.value }))}
+            placeholder={f.placeholder}
+            className="w-full rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-3 py-2 text-[13px] text-[var(--text)] outline-none placeholder:text-[var(--text3)] focus:border-[var(--text3)]"
+          />
+          {!isSetup && platform.key === 'instagram' && f.key === 'access_token' && (
+            <Link
+              href="/configuracion/instagram-token-guide"
+              className="mt-2 inline-block text-[11px] text-[var(--accent)] hover:underline"
+            >
+              Cómo generar tu token de Instagram →
+            </Link>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+
+  const showWebhookBlock =
+    platform.key === 'manychat'
+      ? Boolean(manychatWebhookInfo)
+      : platform.key === 'calendly'
+        ? Boolean(calendlyWebhookInfo)
+        : Boolean(
+            connection?.credentials?.webhook_token &&
+              WEBHOOK_PLATFORMS.includes(platform.key as (typeof WEBHOOK_PLATFORMS)[number]),
+          )
+
+  const webhookTokenDisplay =
+    platform.key === 'manychat'
+      ? manychatWebhookInfo?.webhook_token
+      : connection?.credentials?.webhook_token
+
+  const webhookBlock = showWebhookBlock ? (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">URL del Webhook</div>
+      <div className="flex items-center gap-2">
+        <code className="flex-1 break-all rounded bg-[var(--bg4)] px-3 py-2 text-[12px] text-[var(--accent)]">
+          {webhookUrl()}
+        </code>
+        <button
+          type="button"
+          onClick={() => navigator.clipboard.writeText(webhookUrl())}
+          className="rounded-lg border border-[var(--border2)] px-3 py-2 text-[11px] text-[var(--text2)]"
+        >
+          Copiar
+        </button>
+      </div>
+      <div className="mb-1 mt-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Token</div>
+      <code className="block break-all rounded bg-[var(--bg4)] px-3 py-2 text-[12px] text-[var(--text2)]">
+        {webhookTokenDisplay}
+      </code>
+    </div>
+  ) : null
+
+  if (isSetup) {
+    return (
+      <div className={PANEL_SETUP}>
+        <div className="mb-4">
+          <h3 className="text-[15px] font-semibold">{platform.label}</h3>
+          <p className="mt-1 text-[12px] text-[var(--text3)]">{platform.subtitle}</p>
+          {isConnected && (
+            <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-[var(--green)]">Conectado</p>
+          )}
+        </div>
+        <div className="mt-auto flex flex-wrap gap-2">
+          <button type="button" disabled className="cursor-not-allowed rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-4 py-2 text-[11px] font-semibold uppercase text-[var(--text3)] opacity-50">
+            Video
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowGuide((v) => !v)}
+            className="rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-4 py-2 text-[11px] font-semibold uppercase text-[var(--text2)]"
+          >
+            Guía
+          </button>
+          {!platform.infoOnly && (
+            <button
+              type="button"
+              onClick={() => setShowForm((v) => !v)}
+              className="rounded-lg bg-[var(--auth-cta-bg)] px-4 py-2 text-[11px] font-semibold uppercase text-[var(--auth-cta-text)]"
+            >
+              Conectar
+            </button>
+          )}
+        </div>
+        {showGuide && <div className="mt-4">{guideBlock}</div>}
+        {showForm && !platform.infoOnly && (
+          <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
+            {fieldsBlock}
+            <button
+              type="button"
+              disabled={status === 'loading'}
+              onClick={() => save(form)}
+              className="w-full rounded-lg bg-[var(--auth-cta-bg)] py-3 text-sm font-semibold uppercase text-[var(--auth-cta-text)] disabled:opacity-50"
+            >
+              {status === 'loading' ? 'Guardando…' : 'Guardar conexión'}
+            </button>
+            {status === 'success' && <p className="text-sm text-[var(--green)]">Guardado.</p>}
+            {status === 'error' && <p className="text-sm text-[var(--text2)]">{errorMsg}</p>}
+            {webhookBlock}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${PANEL} p-5`}>
+      <button
+        type="button"
+        className="flex w-full cursor-pointer items-center gap-4 text-left"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--bg4)] text-lg">
+          {platform.icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold">{platform.label}</div>
+          <div className="text-[12px] text-[var(--text3)]">{platform.subtitle}</div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {platform.infoOnly ? (
+            <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text3)]">Guía</span>
+          ) : (
+            <>
+              <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-[var(--green)]' : 'bg-[var(--text3)]'}`} />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text3)]">
+                {isConnected ? 'Conectado' : 'Desconectado'}
+              </span>
+            </>
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <button
+            type="button"
+            onClick={() => setShowGuide((v) => !v)}
+            className="mb-4 flex w-full items-center gap-2 rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-4 py-2.5 text-left text-[12px] text-[var(--text2)]"
+          >
+            <span>{showGuide ? '▾' : '▸'}</span>
+            <span className="font-medium">Cómo configurar {platform.label}</span>
+          </button>
+          {showGuide && <div className="mb-5">{guideBlock}</div>}
+          {platform.fields.length > 0 && fieldsBlock}
+          {!platform.infoOnly && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => save(form)}
+                className="rounded-lg bg-[var(--auth-cta-bg)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--auth-cta-text)]"
+              >
+                {WEBHOOK_PLATFORMS.includes(platform.key as (typeof WEBHOOK_PLATFORMS)[number]) && !isConnected
+                  ? `Conectar ${platform.label}`
+                  : 'Guardar'}
+              </button>
+              {connection?.last_sync_at && (
+                <span className="text-[11px] text-[var(--text3)]">
+                  Última sync: {new Date(connection.last_sync_at).toLocaleString('es-AR')}
+                </span>
+              )}
+            </div>
+          )}
+          {webhookBlock}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const ConnectionCard = memo(ConnectionCardInner)
