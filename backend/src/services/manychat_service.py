@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 from pony.orm import db_session
 
-from src.models import ApiConnection
+from src.db_query_utils import rows_for_user
 
 DEFAULT_BIO_TAG = "leads que ingresan por el perfil (DM INFO)"
 
@@ -72,7 +72,7 @@ class ManychatService:
 
     def get_credentials(self, user_id: str) -> ManychatCredentials:
         with db_session:
-            rows = [c for c in list(ApiConnection.select()) if c.user_id == user_id]
+            rows = rows_for_user(ApiConnection, user_id)
             # Conexiones API usa platform="manychat"; mantenemos fallback por compatibilidad histórica.
             conn = next((c for c in rows if str(c.platform).strip() == "manychat"), None)
             if conn is None:

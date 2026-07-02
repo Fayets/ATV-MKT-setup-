@@ -16,6 +16,14 @@ from pony.orm import ObjectNotFound, db_session, rollback
 from src.db import db
 from src.models import ApiConnection, Lead, ReelContent
 from src.schemas import ReelKeywordPatchRequest, ReelPatchRequest, ReelResponse, ReelsListResponse
+from src.db_query_utils import rows_for_user
+from src.services.lead_stats_utils import (
+    AgendaStats,
+    agenda_stats_for,
+    keyword_lead_count,
+    load_user_agenda_stats,
+    load_user_keyword_lead_counts,
+)
 
 AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 _sync_lock = threading.Lock()
@@ -179,7 +187,13 @@ AND trim(both from coalesce(l.punto_agenda, '')) = $tid"""
         v = rows[0]
         return float(v) if v is not None else 0.0
 
-    def _to_response(self, row: ReelContent) -> ReelResponse:
+    def _to_response(
+        self,
+        row: ReelContent,
+        *,
+        agenda_stats: dict[str, AgendaStats] | None = None,
+        keyword_counts: dict[str, int] | None = None,
+    ) -> ReelResponse:
         metrics = {
             "plays": row.plays,
             "reach": row.reach,
@@ -199,12 +213,20 @@ AND trim(both from coalesce(l.punto_agenda, '')) = $tid"""
         pub = row.fecha_publicacion
         published_at_api = self._as_utc(pub) if pub else None
         chats_manuales = int(row.chats_manuales or 0)
-        chats_leads = self._chats_leads_for_reel(row)
-        chats_total = chats_manuales + chats_leads
-        agendas_n = self._count_agendas_for_reel(int(row.user_id), int(row.id))
         uid = int(row.user_id)
         rid = int(row.id)
-        cash_leads = self._sum_pago_agenda_for_reel(uid, rid)
+        if agenda_stats is not None:
+            st = agenda_stats_for(agenda_stats, str(rid))
+            agendas_n = st.agendas
+            cash_leads = st.cash
+        else:
+            agendas_n = self._count_agendas_for_reel(uid, rid)
+            cash_leads = self._sum_pago_agenda_for_reel(uid, rid)
+        if keyword_counts is not None:
+            chats_leads = keyword_lead_count(keyword_counts, row.keyword)
+        else:
+            chats_leads = self._chats_leads_for_reel(row)
+        chats_total = chats_manuales + chats_leads
         manual_cash_db = float(row.cash or 0)
         return ReelResponse(
             id=str(row.id),
@@ -260,14 +282,14 @@ AND EXISTS (
         reel: ReelResponse,
         refresh: bool = False,
     ) -> ReelResponse:
-        """Ajusta chats y cash por chat; `cash` ya es suma de pagos por agenda (no se mezcla con manual_cash)."""
+        """Ajusta chats y cash por chat; evita re-consultar leads si ya vienen de _to_response."""
         _ = refresh
         manual_chats = int(reel.manual_chats if reel.manual_chats is not None else 0)
-        leads_chats = self._chats_leads_for_response(user_id, reel)
-        base_chats = manual_chats + leads_chats
+        if reel.chats is None:
+            leads_chats = self._chats_leads_for_response(user_id, reel)
+            reel.chats = manual_chats + leads_chats
         cash_leads = float(reel.cash or 0)
         reel.chats_count = 0
-        reel.chats = base_chats
         reel.cash_total = cash_leads
         reel.cpc = (cash_leads / reel.chats) if reel.chats > 0 else 0
         return reel
@@ -387,7 +409,7 @@ AND EXISTS (
         uid = int(user_id)
         month_set = self._month_filter_set(month, months_csv)
         with db_session:
-            rows = [r for r in list(ReelContent.select()) if r.user_id == uid]
+            rows = rows_for_user(ReelContent, uid)
             available_months = sorted(
                 {mk for r in rows if r.fecha_publicacion and (mk := self._month_key_ar(r.fecha_publicacion))},
                 reverse=True,
@@ -406,16 +428,25 @@ AND EXISTS (
             end = start + page_size
             page_rows = rows[start:end]
 
+            agenda_stats: dict[str, AgendaStats] | None = None
+            keyword_counts: dict[str, int] | None = None
+            if not skip_agg:
+                agenda_stats = load_user_agenda_stats(uid)
+                keyword_counts = load_user_keyword_lead_counts(uid)
+
             if skip_agg:
                 total_cash_raw = 0.0
                 total_chats_raw = 0
             else:
-                total_cash_raw = sum(self._sum_pago_agenda_for_reel(uid, int(r.id)) for r in rows)
-                total_chats_raw = 0
-                for r in rows:
-                    total_chats_raw += int(r.chats_manuales or 0) + self._chats_leads_for_reel(r)
+                assert agenda_stats is not None and keyword_counts is not None
+                total_cash_raw = sum(agenda_stats_for(agenda_stats, str(r.id)).cash for r in rows)
+                total_chats_raw = sum(
+                    int(r.chats_manuales or 0) + keyword_lead_count(keyword_counts, r.keyword) for r in rows
+                )
 
-            page_responses = [self._to_response(r) for r in page_rows]
+            page_responses = [
+                self._to_response(r, agenda_stats=agenda_stats, keyword_counts=keyword_counts) for r in page_rows
+            ]
 
         for reel in page_responses:
             self._finalize_reel_response(user_id=str(uid), reel=reel, refresh=False)
@@ -483,13 +514,12 @@ AND EXISTS (
                 raise HTTPException(status_code=404, detail="Reel no encontrado.") from e
 
             if normalized_keyword:
+                candidates = [r for r in rows_for_user(ReelContent, uid) if r.id != rid]
                 duplicated = next(
                     (
                         r
-                        for r in list(ReelContent.select())
-                        if r.user_id == uid
-                        and r.id != rid
-                        and (r.keyword or "").strip().lower() == normalized_keyword.lower()
+                        for r in candidates
+                        if (r.keyword or "").strip().lower() == normalized_keyword.lower()
                     ),
                     None,
                 )
@@ -507,14 +537,10 @@ AND EXISTS (
     def _resolve_instagram_conn(self, user_id: str) -> tuple[str, str]:
         uid = int(user_id)
         with db_session:
-            conn = next(
-                (
-                    c
-                    for c in list(ApiConnection.select())
-                    if c.user_id == uid and c.platform == "instagram"
-                ),
-                None,
-            )
+            try:
+                conn = ApiConnection.get(user_id=uid, platform="instagram")
+            except ObjectNotFound:
+                conn = None
             if conn is None:
                 raise HTTPException(
                     status_code=400,
@@ -571,6 +597,19 @@ AND EXISTS (
             preview_n = len(_range_preview_media.get(user_id, []))
         if preview_n > 0:
             base["range_preview_count"] = preview_n
+        from pony.orm import ObjectNotFound
+        from src.services.instagram_token_utils import resolve_instagram_token_dates
+
+        try:
+            with db_session:
+                conn = ApiConnection.get(user_id=int(user_id), platform="instagram")
+            token_dates = resolve_instagram_token_dates(conn)
+            if token_dates.get("token_expires_at"):
+                base["token_expires_at"] = str(token_dates["token_expires_at"])
+            if token_dates.get("token_saved_at"):
+                base["token_saved_at"] = str(token_dates["token_saved_at"])
+        except ObjectNotFound:
+            pass
         return base
 
     def get_metrics(self, user_id: str, month: str | None, months_csv: str | None = None) -> dict[str, int]:
@@ -578,10 +617,14 @@ AND EXISTS (
         uid_str = str(uid)
         month_set = self._month_filter_set(month, months_csv)
         with db_session:
-            rows = [r for r in list(ReelContent.select()) if r.user_id == uid]
+            rows = rows_for_user(ReelContent, uid)
             if month_set is not None:
                 rows = [r for r in rows if self._month_key_ar(r.fecha_publicacion) in month_set]
-            payloads = [self._to_response(r) for r in rows]
+            agenda_stats = load_user_agenda_stats(uid)
+            keyword_counts = load_user_keyword_lead_counts(uid)
+            payloads = [
+                self._to_response(r, agenda_stats=agenda_stats, keyword_counts=keyword_counts) for r in rows
+            ]
 
         chats_del_mes = 0
         reels_con_cta = 0
@@ -704,7 +747,7 @@ AND EXISTS (
         uid = int(user_id)
         access_token, _ = self._resolve_instagram_conn(user_id)
         with db_session:
-            reel_rows = [(r.id, r.instagram_id) for r in list(ReelContent.select()) if r.user_id == uid]
+            reel_rows = [(r.id, r.instagram_id) for r in rows_for_user(ReelContent, uid)]
 
         total = len(reel_rows)
         self._set_sync_state(user_id, total=total, processed=0, status="running", phase="processing", discovered=total)

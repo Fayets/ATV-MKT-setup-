@@ -9,6 +9,7 @@ from pony.orm import db_session
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from src.db_query_utils import filter_date_range, rows_for_user
 from src.models import CloserReport, SeguimientoReport, SetterReport, TeamMember
 from src.team_reports_pdf import build_team_reports_pdf, fecha_iso_a_dd_mm_yyyy
 
@@ -56,7 +57,7 @@ def _parse_uid(user_id: str) -> int:
 
 
 def _members_for_user(uid: int) -> list[TeamMember]:
-    return [m for m in list(TeamMember.select()) if m.user_id == uid]
+    return rows_for_user(TeamMember, uid)
 
 
 def _get_active_member(uid: int, member_id: int, rol: str) -> TeamMember:
@@ -105,9 +106,7 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
     with db_session:
         members = {m.id: m for m in _members_for_user(uid)}
         rows: list[dict[str, Any]] = []
-        for r in list(SetterReport.select()):
-            if r.user_id != uid or not (desde <= r.fecha <= hasta):
-                continue
+        for r in filter_date_range(rows_for_user(SetterReport, uid), desde=desde, hasta=hasta):
             rows.append(
                 {
                     "kind": "setter",
@@ -124,9 +123,7 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "insights_marketing": r.insights_marketing or "",
                 }
             )
-        for r in list(CloserReport.select()):
-            if r.user_id != uid or not (desde <= r.fecha <= hasta):
-                continue
+        for r in filter_date_range(rows_for_user(CloserReport, uid), desde=desde, hasta=hasta):
             rows.append(
                 {
                     "kind": "closer",
@@ -151,9 +148,7 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "insights_marketing_llamada": getattr(r, "insights_marketing_llamada", None) or "",
                 }
             )
-        for r in list(SeguimientoReport.select()):
-            if r.user_id != uid or not (desde <= r.fecha <= hasta):
-                continue
+        for r in filter_date_range(rows_for_user(SeguimientoReport, uid), desde=desde, hasta=hasta):
             rows.append(
                 {
                     "kind": "seguimiento",
@@ -368,14 +363,14 @@ def delete_member(member_id: int, user_id: str = Depends(require_user_id)) -> di
                 break
         if found is None:
             raise HTTPException(status_code=404, detail="Miembro no encontrado.")
-        for r in list(SetterReport.select()):
-            if r.user_id == uid and r.member_id == member_id:
+        for r in rows_for_user(SetterReport, uid):
+            if r.member_id == member_id:
                 r.delete()
-        for r in list(CloserReport.select()):
-            if r.user_id == uid and r.member_id == member_id:
+        for r in rows_for_user(CloserReport, uid):
+            if r.member_id == member_id:
                 r.delete()
-        for r in list(SeguimientoReport.select()):
-            if r.user_id == uid and r.member_id == member_id:
+        for r in rows_for_user(SeguimientoReport, uid):
+            if r.member_id == member_id:
                 r.delete()
         found.delete()
     return {"status": "ok"}
@@ -454,8 +449,8 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
         _get_active_member(uid, body.member_id, "setter")
         existing = [
             r
-            for r in list(SetterReport.select())
-            if r.user_id == uid and r.member_id == body.member_id and r.fecha == body.fecha
+            for r in rows_for_user(SetterReport, uid)
+            if r.member_id == body.member_id and r.fecha == body.fecha
         ]
         if existing:
             r = existing[0]
@@ -543,11 +538,8 @@ def save_closer_report(body: CloserReportBody, user_id: str = Depends(require_us
             return ReportSavedOut(id=r.id, updated=False)
         existing = [
             r
-            for r in list(CloserReport.select())
-            if r.user_id == uid
-            and r.member_id == body.member_id
-            and r.fecha == body.fecha
-            and r.reporte_tipo == tipo
+            for r in rows_for_user(CloserReport, uid)
+            if r.member_id == body.member_id and r.fecha == body.fecha and r.reporte_tipo == tipo
         ]
         if existing:
             r = existing[0]
@@ -623,8 +615,7 @@ def seguimiento_reports_month(
     with db_session:
         entries = [
             {"fecha": r.fecha.isoformat(), "monto": float(r.monto)}
-            for r in list(SeguimientoReport.select())
-            if r.user_id == uid and start <= r.fecha <= end
+            for r in filter_date_range(rows_for_user(SeguimientoReport, uid), desde=start, hasta=end)
         ]
     total = sum(e["monto"] for e in entries)
     return {"total": total, "entries": entries}
@@ -646,11 +637,8 @@ def closer_marketing_report_count(
         _get_active_member(uid, member_id, "closer")
         n = sum(
             1
-            for r in list(CloserReport.select())
-            if r.user_id == uid
-            and r.member_id == member_id
-            and r.fecha == fecha
-            and r.reporte_tipo == "marketing"
+            for r in rows_for_user(CloserReport, uid)
+            if r.member_id == member_id and r.fecha == fecha and r.reporte_tipo == "marketing"
         )
     return CloserMarketingCountOut(count=n)
 
@@ -666,8 +654,7 @@ def team_dashboard_daily(
     with db_session:
         rows_data = [
             (r.fecha, int(r.conversaciones))
-            for r in list(SetterReport.select())
-            if r.user_id == uid and start <= r.fecha <= end
+            for r in filter_date_range(rows_for_user(SetterReport, uid), desde=start, hasta=end)
         ]
     by_day: dict[date, int] = defaultdict(int)
     for f, c in rows_data:
@@ -696,16 +683,12 @@ def team_dashboard(
     ym = month.strip()
 
     with db_session:
-        setter_rows = [
-            r
-            for r in list(SetterReport.select())
-            if r.user_id == uid and start <= r.fecha <= end
-        ]
+        setter_rows = filter_date_range(rows_for_user(SetterReport, uid), desde=start, hasta=end)
         total_conversaciones = sum(int(r.conversaciones) for r in setter_rows)
         closer_rows = [
             r
-            for r in list(CloserReport.select())
-            if r.user_id == uid and start <= r.fecha <= end and r.reporte_tipo == "ventas"
+            for r in filter_date_range(rows_for_user(CloserReport, uid), desde=start, hasta=end)
+            if r.reporte_tipo == "ventas"
         ]
 
         members_by_id = {m.id: m for m in _members_for_user(uid)}

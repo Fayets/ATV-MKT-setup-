@@ -6,6 +6,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pony.orm import db_session
 
+from src.db_query_utils import rows_for_user
 from src.models import MasterList
 from src.schemas import MasterListAddItemRequest, MasterListsResponse
 
@@ -66,7 +67,7 @@ def _items_as_list(raw: object) -> list[str]:
 
 def _rows_for_user(uid: int) -> list[MasterList]:
     """Filtrar en Python: con Python 3.13, `select(lambda m: m.user_id == uid)` genera SQL incorrecto (0 filas)."""
-    return [m for m in list(MasterList.select()) if m.user_id == uid]
+    return rows_for_user(MasterList, uid)
 
 
 def _rows_for_category(uid: int, category: str) -> list[MasterList]:

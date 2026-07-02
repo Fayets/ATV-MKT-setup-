@@ -16,8 +16,6 @@ from fastapi.staticfiles import StaticFiles
 from pony.orm import db_session
 
 from src.controllers.auth_controller import router as auth_router
-from src.controllers.connections_controller import router as connections_setup_router
-from src.controllers.setup_controller import router as setup_router
 from src.setup_env import is_db_configured
 from src.controllers.bio_controller import router as bio_router
 from src.controllers.conexiones_controller import router as conexiones_router
@@ -122,7 +120,7 @@ async def lifespan(_: FastAPI):
             f"[scheduler] Auto refresh-metrics reels cada {get_reels_interval_minutes()} min"
         )
     else:
-        print("[setup] Sin DATABASE_URL — init_db y scheduler omitidos hasta /api/setup/db-connect")
+        print("[startup] Sin DATABASE_URL — init_db y scheduler omitidos. Configurá backend/.env")
     yield
     if scheduler.running:
         scheduler.shutdown()
@@ -147,8 +145,6 @@ app.add_middleware(
 )
 
 # app.include_router(health_router)
-app.include_router(setup_router)
-app.include_router(connections_setup_router)
 app.include_router(auth_router)
 app.include_router(conexiones_router)
 app.include_router(master_lists_router)

@@ -6,8 +6,10 @@ import time
 from datetime import datetime
 from decouple import config
 from fastapi import APIRouter, HTTPException, Request
-from pony.orm import db_session
+from pony.orm import ObjectNotFound, db_session
 
+from src.db import db
+from src.db_query_utils import rows_for_user
 from src.lead_display_utils import compute_dias_para_agendar
 from src.models import ApiConnection, Lead, ReelContent
 
@@ -55,44 +57,45 @@ def _find_lead_same_contact(user_id: int, ig_display: str) -> Lead | None:
     ig_key = _norm_ig(ig_display)
     if not ig_key:
         return None
-    matches = [
-        r
-        for r in list(Lead.select())
-        if int(r.user_id) == user_id and _norm_ig(r.ig or "") == ig_key
-    ]
-    if not matches:
-        return None
-    matches.sort(key=lambda r: (r.created_at.timestamp() if r.created_at else 0.0), reverse=True)
-    return matches[0]
+    tbl = Lead._table_ or "lead"
+    sql = f"""l.id FROM {tbl} l
+WHERE l.user_id = $user_id
+AND lower(trim(both from coalesce(l.ig, ''))) = $ig_key
+ORDER BY l.created_at DESC
+LIMIT 1"""
+    with db_session:
+        rows = db.select(sql, globals(), {"user_id": user_id, "ig_key": ig_key})
+        if not rows:
+            return None
+        try:
+            return Lead.get(id=int(rows[0]), user_id=user_id)
+        except ObjectNotFound:
+            return None
 
 
 def _resolve_user_id_by_keyword(keyword: str) -> int | None:
-    """Dueño del keyword: reel con ese keyword; si no hay reel, primer ApiConnection manychat (keyword de bio genérico)."""
+    """Dueño del keyword: reel con ese keyword; si no hay reel, primer ApiConnection manychat."""
     kw = _norm_kw(keyword)
     if not kw:
         return None
 
+    tbl = ReelContent._table_ or "reelcontent"
+    sql = f"""r.user_id FROM {tbl} r
+WHERE lower(trim(both from coalesce(r.keyword, ''))) = $kw"""
     with db_session:
-        reel_uid: int | None = None
-        for reel in list(ReelContent.select()):
-            if _norm_kw(reel.keyword or "") != kw:
-                continue
-            uid = int(reel.user_id)
-            if reel_uid is None:
-                reel_uid = uid
-            elif reel_uid != uid:
+        reel_uids: list[int] = []
+        for row in db.select(sql, globals(), {"kw": kw}):
+            reel_uids.append(int(row))
+        if reel_uids:
+            reel_uid = reel_uids[0]
+            if any(uid != reel_uid for uid in reel_uids):
                 raise HTTPException(
                     status_code=409,
                     detail="Hay más de un usuario con el mismo keyword en reels. Corregí keywords duplicados.",
                 )
-        if reel_uid is not None:
             return reel_uid
 
-        manychat_conns = [
-            c
-            for c in list(ApiConnection.select())
-            if str(c.platform).strip().lower() == "manychat"
-        ]
+        manychat_conns = list(ApiConnection.select(lambda c: c.platform == "manychat"))
         manychat_conns.sort(key=lambda c: int(c.id))
         if manychat_conns:
             return int(manychat_conns[0].user_id)
@@ -126,16 +129,19 @@ async def manychat_webhook(request: Request) -> dict[str, str]:
         if not ig_key:
             return {"status": "ok"}
         with db_session:
-            matches = [
-                r for r in list(Lead.select()) if _norm_ig(r.ig or "") == ig_key
-            ]
-            if not matches:
+            tbl = Lead._table_ or "lead"
+            sql = f"""l.id FROM {tbl} l
+WHERE lower(trim(both from coalesce(l.ig, ''))) = $ig_key
+ORDER BY l.created_at DESC
+LIMIT 1"""
+            rows = db.select(sql, globals(), {"ig_key": ig_key})
+            if not rows:
                 return {"status": "ok"}
-            matches.sort(
-                key=lambda r: (r.created_at.timestamp() if r.created_at else 0.0),
-                reverse=True,
-            )
-            matches[0].respondio_auto = True
+            try:
+                lead = Lead.get(id=int(rows[0]))
+            except ObjectNotFound:
+                return {"status": "ok"}
+            lead.respondio_auto = True
         return {"status": "ok"}
 
     keyword = str(payload.get("keyword") or "").strip()
@@ -265,7 +271,7 @@ def _find_lead_for_calendly(user_id: int, display_name: str) -> Lead | None:
     nkey = _norm_name_for_match(display_name)
     if not nkey:
         return None
-    rows = [r for r in list(Lead.select()) if int(r.user_id) == user_id]
+    rows = rows_for_user(Lead, user_id)
     name_matches = [r for r in rows if _norm_name_for_match(r.nombre or "") == nkey]
     if not name_matches:
         return None
@@ -285,11 +291,7 @@ async def calendly_webhook(request: Request) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Invalid request body")
 
     with db_session:
-        calendly_conns = [
-            c
-            for c in list(ApiConnection.select())
-            if str(c.platform or "").strip().casefold() == "calendly"
-        ]
+        calendly_conns = list(ApiConnection.select(lambda c: c.platform == "calendly"))
         calendly_conns.sort(key=lambda c: int(c.id))
         if not calendly_conns:
             raise HTTPException(

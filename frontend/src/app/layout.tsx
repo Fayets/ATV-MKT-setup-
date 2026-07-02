@@ -1,9 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
-import { DbBootstrapProvider } from '@/features/setup/db-bootstrap-provider'
-import { fetchCompanyConfig } from '@/shared/lib/company-config.server'
-import { resolveMediaUrl } from '@/shared/lib/backend-public-url'
 import { ThemeProvider } from '@/shared/components/theme-provider'
 import { ToastProvider } from '@/shared/components/toast'
 import './globals.css'
@@ -14,24 +11,9 @@ const inter = Inter({
   display: 'swap',
 })
 
-export async function generateMetadata(): Promise<Metadata> {
-  try {
-    const config = await fetchCompanyConfig()
-    const title = config.company_name || 'ATV'
-    const icons: Metadata['icons'] = {}
-    const logo = resolveMediaUrl(config.logo_url)
-    if (logo) icons.icon = logo
-    return {
-      title,
-      description: 'Plataforma integral de gestion de contenido y ventas para creadores high-ticket',
-      icons: Object.keys(icons).length ? icons : undefined,
-    }
-  } catch {
-    return {
-      title: 'ATV',
-      description: 'Plataforma integral de gestion de contenido y ventas para creadores high-ticket',
-    }
-  }
+export const metadata: Metadata = {
+  title: 'ATV',
+  description: 'Plataforma integral de gestion de contenido y ventas para creadores high-ticket',
 }
 
 export default function RootLayout({
@@ -48,9 +30,7 @@ export default function RootLayout({
           {themeScript}
         </Script>
         <ThemeProvider>
-          <ToastProvider>
-            <DbBootstrapProvider>{children}</DbBootstrapProvider>
-          </ToastProvider>
+          <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>
       </body>
     </html>

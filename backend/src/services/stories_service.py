@@ -17,6 +17,8 @@ from pony.orm import ObjectNotFound, db_session, flush
 from src.db import db
 from src.models import ApiConnection, Lead, StorySequence, StorySlide
 from src.schemas import StorySequenceIn
+from src.db_query_utils import rows_for_user
+from src.services.lead_stats_utils import AgendaStats, agenda_stats_for, load_user_agenda_stats
 from src.services.sync_settings_service import get_stories_interval_minutes
 from src.services.sync_scheduler_service import stories_next_sync_projection
 from src.story_sync_scheduler_ref import next_auto_sync_stories_run_time
@@ -121,13 +123,24 @@ def _dedupe_slides_for_response(slides: list[StorySlide]) -> list[StorySlide]:
     return out
 
 
-def _serialize_sequence(sequence: StorySequence, user_id: str) -> dict[str, Any]:
+def _serialize_sequence(
+    sequence: StorySequence,
+    user_id: str,
+    *,
+    agenda_stats: dict[str, AgendaStats] | None = None,
+) -> dict[str, Any]:
     slides_raw = sorted(list(sequence.slides), key=lambda s: (s.order_index, s.id))
     slides = _dedupe_slides_for_response(slides_raw)
     uid = int(user_id)
     sid = int(sequence.id)
-    agendas_n = _count_agendas_for_sequence(uid, sid)
-    cash_leads_f = _sum_pago_agenda_for_sequence(uid, sid)
+    tid = f"story:{sid}"
+    if agenda_stats is not None:
+        st = agenda_stats_for(agenda_stats, tid)
+        agendas_n = st.agendas
+        cash_leads_f = st.cash
+    else:
+        agendas_n = _count_agendas_for_sequence(uid, sid)
+        cash_leads_f = _sum_pago_agenda_for_sequence(uid, sid)
     cash_manual_f = float(sequence.cash or 0)
     cash_total_f = cash_manual_f + cash_leads_f
     cash_manual_i = int(round(cash_manual_f))
@@ -290,20 +303,20 @@ class StoriesService:
     def get_sequences(self, user_id: str, month: str) -> list[dict[str, Any]]:
         print("[stories] get_sequences llamado con user_id:", user_id, "month:", month)
         try:
-            year, month_num = map(int, month.split("-"))
+            uid = int(user_id)
+            start, end = _month_range(month)
             rows = [
                 s
-                for s in list(StorySequence.select())
-                if s.user_id == int(user_id)
-                and s.sequence_date.year == year
-                and s.sequence_date.month == month_num
+                for s in rows_for_user(StorySequence, uid)
+                if start <= s.sequence_date < end
             ]
             for row in rows:
                 slides = sorted(list(row.slides), key=lambda s: (s.order_index, s.id))
                 for slide in slides:
                     print(f"[stories] slide {slide.id}: reach={slide.reach}, replies={slide.replies}")
             rows.sort(key=lambda s: (s.sequence_date, s.id), reverse=True)
-            return [_serialize_sequence(row, user_id) for row in rows]
+            agenda_stats = load_user_agenda_stats(uid)
+            return [_serialize_sequence(row, user_id, agenda_stats=agenda_stats) for row in rows]
         except Exception as e:
             print("[stories] ERROR:", str(e))
             import traceback
@@ -312,9 +325,11 @@ class StoriesService:
 
     @db_session
     def get_all_sequences(self, user_id: str) -> list[dict[str, Any]]:
-        rows = [s for s in list(StorySequence.select()) if s.user_id == int(user_id)]
+        uid = int(user_id)
+        rows = rows_for_user(StorySequence, int(user_id))
         rows.sort(key=lambda s: (s.sequence_date, s.id), reverse=True)
-        return [_serialize_sequence(row, user_id) for row in rows]
+        agenda_stats = load_user_agenda_stats(uid)
+        return [_serialize_sequence(row, user_id, agenda_stats=agenda_stats) for row in rows]
 
     @db_session
     def create_sequence(self, user_id: str, data: StorySequenceIn) -> dict[str, Any]:
@@ -454,13 +469,12 @@ class StoriesService:
     def get_metrics(self, user_id: str, month: str) -> dict[str, int]:
         print("[stories] get_metrics llamado con user_id:", user_id, "month:", month)
         try:
-            year, month_num = map(int, month.split("-"))
+            uid = int(user_id)
+            start, end = _month_range(month)
             rows = [
                 s
-                for s in list(StorySequence.select())
-                if s.user_id == int(user_id)
-                and s.sequence_date.year == year
-                and s.sequence_date.month == month_num
+                for s in rows_for_user(StorySequence, uid)
+                if start <= s.sequence_date < end
             ]
             chats_del_mes = sum(sum(int(s.replies or 0) for s in seq.slides) for seq in rows)
             secuencias_con_cta = sum(1 for seq in rows if bool(seq.cta))
@@ -485,10 +499,10 @@ class StoriesService:
 
     @db_session
     def _resolve_instagram_conn(self, user_id: str) -> tuple[str, str]:
-        conn = next(
-            (c for c in list(ApiConnection.select()) if c.user_id == int(user_id) and c.platform == "instagram"),
-            None,
-        )
+        try:
+            conn = ApiConnection.get(user_id=int(user_id), platform="instagram")
+        except ObjectNotFound:
+            conn = None
         creds = conn.credentials if conn and isinstance(conn.credentials, dict) else {}
         access_token = str(creds.get("access_token") or "").strip()
         ig_user_id = str(creds.get("instagram_user_id") or "").strip()
@@ -501,31 +515,23 @@ class StoriesService:
 
     @db_session
     def _find_slide_for_story(self, user_id: str, story_id: str, story_day: date) -> StorySlide | None:
-        by_media_id = next(
-            (
-                slide
-                for slide in list(StorySlide.select())
-                if slide.instagram_media_id == story_id and slide.sequence.user_id == int(user_id)
-            ),
-            None,
-        )
-        if by_media_id is not None:
-            return by_media_id
+        uid = int(user_id)
+        for slide in StorySlide.select(lambda s: s.instagram_media_id == story_id):
+            if slide.sequence.user_id == uid:
+                return slide
 
-        same_day = [
-            slide
-            for slide in list(StorySlide.select())
-            if slide.sequence.user_id == int(user_id) and slide.sequence.sequence_date == story_day
-        ]
-        same_day.sort(key=lambda s: (s.order_index, s.id))
+        seq = StorySequence.get(user_id=uid, sequence_date=story_day)
+        if seq is None:
+            return None
+        same_day = sorted(list(seq.slides), key=lambda s: (s.order_index, s.id))
         return same_day[0] if same_day else None
 
     @db_session
     def _get_or_create_sequence_id(self, user_id: str, story_day: date) -> tuple[int, bool]:
         uid = int(user_id)
-        for s in list(StorySequence.select()):
-            if s.user_id == uid and s.sequence_date == story_day:
-                return s.id, False
+        existing = StorySequence.get(user_id=uid, sequence_date=story_day)
+        if existing is not None:
+            return existing.id, False
         seq = StorySequence(
             user_id=uid,
             sequence_date=story_day,
@@ -541,8 +547,8 @@ class StoriesService:
         uid = int(user_id)
         return [
             s.id
-            for s in list(StorySlide.select())
-            if (s.instagram_media_id or "") == story_id and s.sequence.user_id == uid
+            for s in StorySlide.select(lambda s: s.instagram_media_id == story_id)
+            if s.sequence.user_id == uid
         ]
 
     @db_session
@@ -657,15 +663,11 @@ class StoriesService:
 
         token_saved_at: datetime | None = None
         token_expires_at: datetime | None = None
-        creds = conn.credentials if conn and isinstance(conn.credentials, dict) else {}
-        token_saved_at = _parse_dt(creds.get("token_saved_at")) or (conn.updated_at if conn else None)
-        token_expires_at = _parse_dt(creds.get("token_expires_at"))
-        if token_expires_at is None:
-            if token_saved_at is not None:
-                token_expires_at = token_saved_at + timedelta(days=60)
-            else:
-                # Fallback solicitado: 59 días por defecto cuando no hay fecha guardada.
-                token_expires_at = datetime.now(AR_TZ) + timedelta(days=59)
+        from src.services.instagram_token_utils import resolve_instagram_token_dates
+
+        token_dates = resolve_instagram_token_dates(conn)
+        token_saved_at = _parse_dt(token_dates.get("token_saved_at"))
+        token_expires_at = _parse_dt(token_dates.get("token_expires_at"))
 
         return {
             "last_sync": _iso_dt(last),

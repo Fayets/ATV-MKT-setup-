@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pony.orm import db_session
 
+from src.db_query_utils import rows_for_user
 from src.lead_display_utils import lead_display_nombre
 from src.models import Lead as LeadEntity
 from src.models import ReelContent
@@ -161,8 +162,8 @@ def list_keywords(
         raise HTTPException(status_code=400, detail="user_id inválido") from e
 
     with db_session:
-        reels = [r for r in list(ReelContent.select()) if int(r.user_id) == uid]
-        leads = [r for r in list(LeadEntity.select()) if int(r.user_id) == uid]
+        reels = rows_for_user(ReelContent, uid)
+        leads = rows_for_user(LeadEntity, uid)
 
     reel_opts = _build_reel_options(reels)
 
@@ -220,8 +221,8 @@ def keywords_metrics(
         raise HTTPException(status_code=400, detail="user_id inválido") from e
 
     with db_session:
-        reels = [r for r in list(ReelContent.select()) if int(r.user_id) == uid]
-        leads = [r for r in list(LeadEntity.select()) if int(r.user_id) == uid]
+        reels = rows_for_user(ReelContent, uid)
+        leads = rows_for_user(LeadEntity, uid)
 
     reel_opts = _build_reel_options(reels)
     reel_filter_id = reel_id.strip() if reel_id and reel_id.strip() else None

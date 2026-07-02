@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from pony.orm import db_session, flush
 
+from src.db_query_utils import rows_for_user
 from src.models import OfferedProgram
 from src.schemas import (
     OfferedProgramCreateRequest,
@@ -15,7 +16,7 @@ from src.schemas import (
 
 class ProgramsServices:
     def _rows_for_user(self, uid: int) -> list[OfferedProgram]:
-        return [p for p in list(OfferedProgram.select()) if int(p.user_id) == uid]
+        return rows_for_user(OfferedProgram, uid)
 
     def _name_taken(self, uid: int, name: str, exclude_id: int | None = None) -> bool:
         key = name.strip().lower()
@@ -135,7 +136,7 @@ def normalize_program_lookup_key(name: str) -> str:
 
 def build_program_norm_price_map(user_id: int) -> dict[str, float]:
     """Misma sesión Pony que el caller (`with db_session`)."""
-    rows = [p for p in list(OfferedProgram.select()) if int(p.user_id) == user_id]
+    rows = rows_for_user(OfferedProgram, user_id)
     out: dict[str, float] = {}
     for p in rows:
         nk = normalize_program_lookup_key(str(p.name or ""))

@@ -4,14 +4,12 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from '@/shared/components/sidebar'
 import { Topbar } from '@/shared/components/topbar'
-import type { CompanyConfigPublic } from '@/shared/lib/company-config.server'
 
 type MainLayoutShellProps = {
   children: React.ReactNode
-  companyConfig: CompanyConfigPublic
 }
 
-export function MainLayoutShell({ children, companyConfig }: MainLayoutShellProps) {
+export function MainLayoutShell({ children }: MainLayoutShellProps) {
   const pathname = usePathname()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
@@ -21,7 +19,7 @@ export function MainLayoutShell({ children, companyConfig }: MainLayoutShellProp
 
   return (
     <div className="flex min-h-screen bg-[var(--bg)]">
-      <Sidebar companyConfig={companyConfig} className="hidden md:flex" />
+      <Sidebar className="hidden md:flex" />
       {mobileNavOpen ? (
         <>
           <button
@@ -30,10 +28,7 @@ export function MainLayoutShell({ children, companyConfig }: MainLayoutShellProp
             className="fixed inset-0 z-40 bg-black/60 md:hidden"
             onClick={() => setMobileNavOpen(false)}
           />
-          <Sidebar
-            companyConfig={companyConfig}
-            className="fixed inset-y-0 left-0 z-50 flex md:hidden"
-          />
+          <Sidebar className="fixed inset-y-0 left-0 z-50 flex md:hidden" />
         </>
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">

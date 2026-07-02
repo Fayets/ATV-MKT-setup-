@@ -52,11 +52,12 @@
   --auth-focus-ring: rgba(255, 255, 255, 0.25);
   --surface-accent-rgb: 255, 255, 255;
 
-  /* Auth login — dorado apagado */
-  --auth-gold: #8B7340;
-  --auth-gold-bright: #9A8248;
-  --auth-gold-dark: #6E5A2E;
-  --auth-gold-border: rgba(139, 115, 64, 0.28);
+  /* Auth login — rojo */
+  --auth-red: #E55B5B;
+  --auth-red-bright: #F06E6E;
+  --auth-red-dark: #C94E4E;
+  --auth-red-border: rgba(229, 91, 91, 0.38);
+  --auth-red-glow: rgba(229, 91, 91, 0.14);
 }
 
 [data-theme='light'] {
@@ -236,13 +237,15 @@
     border-radius: 12px 12px 0 0;
   }
 
-  /* Login card — acento dorado liviano, sin blur ni capas pesadas */
+  /* Login card — acento rojo liviano, sin blur ni capas pesadas */
   .auth-card {
     position: relative;
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(229, 91, 91, 0.12);
     background: var(--bg2);
-    box-shadow: var(--shadow-sm);
+    box-shadow:
+      0 0 0 1px rgba(229, 91, 91, 0.06),
+      0 12px 40px rgba(229, 91, 91, 0.08);
     contain: layout style paint;
   }
 
@@ -254,7 +257,7 @@
     right: 0;
     height: 1px;
     border-radius: 16px 16px 0 0;
-    background: linear-gradient(90deg, var(--auth-gold-border) 0%, transparent 50%);
+    background: linear-gradient(90deg, var(--auth-red-border) 0%, transparent 55%);
     pointer-events: none;
   }
 
@@ -266,24 +269,24 @@
     bottom: 0;
     width: 1px;
     border-radius: 16px 0 0 16px;
-    background: linear-gradient(180deg, var(--auth-gold-border) 0%, transparent 50%);
+    background: linear-gradient(180deg, var(--auth-red-border) 0%, transparent 55%);
     pointer-events: none;
   }
 
   .auth-shell {
-    --auth-detail: var(--auth-gold-bright);
-    --auth-cta-bg: var(--auth-gold);
-    --auth-cta-text: #F5F5F5;
-    --auth-focus-ring: rgba(139, 115, 64, 0.35);
+    --auth-detail: var(--auth-red-bright);
+    --auth-cta-bg: var(--auth-red);
+    --auth-cta-text: #FFFFFF;
+    --auth-focus-ring: rgba(229, 91, 91, 0.35);
   }
 
   .auth-cta {
-    background: var(--auth-gold);
+    background: var(--auth-red);
     color: var(--auth-cta-text);
   }
 
   .auth-cta:hover:not(:disabled) {
-    background: var(--auth-gold-bright);
+    background: var(--auth-red-bright);
   }
 
   .auth-cta:disabled {
@@ -292,7 +295,7 @@
   }
 
   .auth-input:focus {
-    border-color: var(--auth-gold-border);
+    border-color: var(--auth-red-border);
     outline: 1px solid var(--auth-focus-ring);
     outline-offset: 0;
   }

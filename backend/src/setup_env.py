@@ -1,11 +1,10 @@
-"""Lectura/escritura de `backend/.env` para el flujo de primera instalación."""
+"""Lectura de `backend/.env` y helpers de conexión a Postgres."""
 
 from __future__ import annotations
 
 import os
 import secrets
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = _BACKEND_DIR / ".env"
@@ -65,69 +64,6 @@ def get_database_url() -> str:
 
 def is_db_configured() -> bool:
     return bool(get_database_url())
-
-
-def _parse_postgres_url(url: str) -> dict[str, str]:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("postgresql", "postgres"):
-        raise ValueError("La URL debe ser postgresql://…")
-    db_name = (parsed.path or "").lstrip("/").split("?")[0]
-    if not db_name:
-        raise ValueError("Falta el nombre de la base en la URL")
-    qs = parse_qs(parsed.query)
-    sslmode = (qs.get("sslmode") or [""])[0] or "require"
-    return {
-        "DATABASE_URL": url.strip(),
-        "DB_PROVIDER": "postgres",
-        "DB_USER": unquote(parsed.username or ""),
-        "DB_PASS": unquote(parsed.password or ""),
-        "DB_HOST": parsed.hostname or "",
-        "DB_NAME": db_name,
-        "DB_PORT": str(parsed.port or 5432),
-        "DB_SSLMODE": sslmode,
-    }
-
-
-def write_env_from_connection_string(connection_string: str) -> None:
-    """Valida formato, escribe `.env` y actualiza `os.environ` para decouple."""
-    vars_map = _parse_postgres_url(connection_string.strip())
-    existing = _parse_env_file()
-    jwt = existing.get("JWT_SECRET") or secrets.token_urlsafe(32)
-    cors = existing.get("CORS_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
-    register_key = existing.get("REGISTER_ADMIN_KEY") or secrets.token_urlsafe(24)
-    manychat_webhook = (existing.get("MANYCHAT_WEBHOOK_TOKEN") or "").strip() or secrets.token_hex(32)
-    site_url = (existing.get("SITE_URL") or "").strip()
-
-    lines = [
-        "# Generado por POST /api/setup/db-connect",
-        f"DATABASE_URL={vars_map['DATABASE_URL']}",
-        f"DB_PROVIDER={vars_map['DB_PROVIDER']}",
-        f"DB_USER={vars_map['DB_USER']}",
-        f"DB_PASS={vars_map['DB_PASS']}",
-        f"DB_HOST={vars_map['DB_HOST']}",
-        f"DB_NAME={vars_map['DB_NAME']}",
-        f"DB_PORT={vars_map['DB_PORT']}",
-        f"DB_SSLMODE={vars_map['DB_SSLMODE']}",
-        f"JWT_SECRET={jwt}",
-        f"CORS_ORIGINS={cors}",
-        f"REGISTER_ADMIN_KEY={register_key}",
-        f"MANYCHAT_WEBHOOK_TOKEN={manychat_webhook}",
-    ]
-    if site_url:
-        lines.append(f"SITE_URL={site_url}")
-    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    env_updates = {
-        **vars_map,
-        "JWT_SECRET": jwt,
-        "CORS_ORIGINS": cors,
-        "REGISTER_ADMIN_KEY": register_key,
-        "MANYCHAT_WEBHOOK_TOKEN": manychat_webhook,
-    }
-    if site_url:
-        env_updates["SITE_URL"] = site_url
-    for key, value in env_updates.items():
-        os.environ[key] = value
 
 
 def load_db_bind_kwargs() -> dict | None:

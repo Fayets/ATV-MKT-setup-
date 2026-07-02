@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from pony.orm import db_session
+from pony.orm import ObjectNotFound, db_session
 
+from src.db_query_utils import rows_for_user
 from src.models import ApiConnection
 from src.schemas import ApiConnectionResponse, ApiConnectionUpsertRequest
 
@@ -32,7 +33,7 @@ class ConexionesServices:
 
     def list_by_user(self, user_id: int) -> list[ApiConnectionResponse]:
         with db_session:
-            rows = [c for c in list(ApiConnection.select()) if c.user_id == user_id]
+            rows = rows_for_user(ApiConnection, user_id)
             rows.sort(key=lambda r: r.platform)
             return [self._to_response(r) for r in rows]
 
@@ -42,10 +43,10 @@ class ConexionesServices:
         platform = platform.strip()
         now = datetime.now(timezone.utc)
         with db_session:
-            user_rows = [c for c in list(ApiConnection.select()) if c.user_id == user_id]
-            matches = [c for c in user_rows if c.platform == platform]
-            matches.sort(key=lambda c: c.id)
-            existing = matches[0] if matches else None
+            try:
+                existing = ApiConnection.get(user_id=user_id, platform=platform)
+            except ObjectNotFound:
+                existing = None
             incoming_credentials = dict(body.credentials or {})
             if platform.lower() == "calendly":
                 incoming_credentials = _sanitize_calendly_credentials(incoming_credentials)

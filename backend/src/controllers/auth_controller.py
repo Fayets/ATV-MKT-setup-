@@ -24,9 +24,9 @@ JWT_EXPIRE_MINUTES = config("JWT_EXPIRE_MINUTES", cast=int, default=60 * 24)
 REGISTER_ADMIN_KEY = config("REGISTER_ADMIN_KEY", default="change-this-register-key")
 
 
-def _create_access_token(username: str) -> str:
+def _create_access_token(username: str, user_id: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MINUTES)
-    payload = {"sub": username, "exp": expire}
+    payload = {"sub": username, "user_id": user_id, "exp": expire}
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -48,7 +48,7 @@ def register_user(
         user = AuthUser(username=username, password_hash=password_hash, updated_at=datetime.utcnow())
         uid = user.id
 
-    return AuthTokenResponse(access_token=_create_access_token(username), user_id=uid)
+    return AuthTokenResponse(access_token=_create_access_token(username, uid), user_id=uid)
 
 
 @router.post("/login", response_model=AuthTokenResponse)
@@ -69,7 +69,7 @@ def login_user(body: AuthLoginRequest):
 
         uid = user.id
 
-    return AuthTokenResponse(access_token=_create_access_token(username), user_id=uid)
+    return AuthTokenResponse(access_token=_create_access_token(username, uid), user_id=uid)
 
 
 def get_current_username(token: str = Depends(oauth2_scheme)) -> str:
@@ -92,5 +92,8 @@ def get_current_user_id(username: str = Depends(get_current_username)) -> int:
 
 
 @router.get("/me", response_model=AuthMeResponse)
-def me(username: str = Depends(get_current_username)):
-    return AuthMeResponse(username=username)
+def me(
+    username: str = Depends(get_current_username),
+    user_id: int = Depends(get_current_user_id),
+):
+    return AuthMeResponse(username=username, user_id=user_id)

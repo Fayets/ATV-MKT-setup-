@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { apiFetch } from '@/lib/api'
@@ -47,6 +48,9 @@ type ReelsMetrics = {
 
 type ComparisonMonthMetrics = { ym: string; metrics: ReelsMetrics }
 
+const PAGE_SIZE = 12
+const INSTAGRAM_TOKEN_WARN_DAYS_LEFT = 5
+
 function normalizeReelsMetrics(data: ReelsMetrics): ReelsMetrics {
   return {
     chats_del_mes: Number(data.chats_del_mes ?? 0),
@@ -63,6 +67,8 @@ type SyncStatus = {
   phase?: 'idle' | 'collecting' | 'processing' | 'done' | 'error' | 'preview_ready'
   discovered?: number
   range_preview_count?: number
+  token_expires_at?: string | null
+  token_saved_at?: string | null
 }
 
 export default function ReelsPage() {
@@ -83,7 +89,7 @@ export default function ReelsPage() {
   const [rangeImportTake, setRangeImportTake] = useState('1')
   const [rangePickingNewDates, setRangePickingNewDates] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [monthMode, setMonthMode] = useState<'all' | 'current' | 'comparison'>('current')
+  const [monthMode, setMonthMode] = useState<'all' | 'current' | 'comparison'>('all')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [aggregateTotals, setAggregateTotals] = useState({ total_cash: 0, total_chats: 0 })
@@ -98,6 +104,8 @@ export default function ReelsPage() {
     second: ComparisonMonthMetrics
   } | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>({ total: 0, processed: 0, status: 'idle' })
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<string | null>(null)
+  const [tokenSavedAt, setTokenSavedAt] = useState<string | null>(null)
   const previousSyncStatus = useRef<SyncStatus['status']>('idle')
   const prevRangeModalStepRef = useRef<1 | 2>(1)
   const prevDiscoverCountRef = useRef(0)
@@ -111,7 +119,26 @@ export default function ReelsPage() {
     if (!isSyncRunning || syncStatus.total <= 0) return 0
     return Math.min(100, Math.max(0, Math.round((syncStatus.processed / syncStatus.total) * 100)))
   }, [isSyncRunning, syncStatus.total, syncStatus.processed])
-  const PAGE_SIZE = 12
+  const tokenDaysLeft = useMemo(() => {
+    if (!tokenExpiresAt) return null
+    const expires = new Date(tokenExpiresAt)
+    if (Number.isNaN(expires.getTime())) return null
+    return Math.max(0, Math.floor((expires.getTime() - Date.now()) / 86400000))
+  }, [tokenExpiresAt])
+  const showTokenRenewal =
+    tokenDaysLeft !== null && tokenDaysLeft <= INSTAGRAM_TOKEN_WARN_DAYS_LEFT
+  const formatTokenDateAr = (iso: string | null) => {
+    if (!iso) return null
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return null
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date)
+  }
+  const tokenRenewByLabel = useMemo(() => formatTokenDateAr(tokenExpiresAt), [tokenExpiresAt])
+  const tokenSavedAtLabel = useMemo(() => formatTokenDateAr(tokenSavedAt), [tokenSavedAt])
   const authHeaders = () => {
     const token = typeof window !== 'undefined' ? sessionStorage.getItem('evoluciona_token') : null
     const headers: Record<string, string> = {}
@@ -158,6 +185,10 @@ export default function ReelsPage() {
 
   const fetchData = useCallback(async () => {
     if (!ready) return
+    if (!userId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       let monthQuery = ''
@@ -188,7 +219,7 @@ export default function ReelsPage() {
   }, [page, monthMode, comparisonMonths, ready, userId, toast])
 
   const fetchMetrics = useCallback(async () => {
-    if (!ready) return
+    if (!ready || !userId) return
     if (monthMode !== 'comparison') {
       setComparisonByMonth(null)
     }
@@ -232,7 +263,7 @@ export default function ReelsPage() {
   }, [monthMode, comparisonMonths, ready, userId, toast])
 
   const fetchSyncStatus = useCallback(async () => {
-    if (!ready) return
+    if (!ready || !userId) return
     try {
       const res = await apiFetch('/reels/sync-status', { headers: authHeaders() })
       const data = await parseJson<SyncStatus>(res)
@@ -247,8 +278,12 @@ export default function ReelsPage() {
         range_preview_count:
           data.range_preview_count !== undefined ? Number(data.range_preview_count) : undefined,
       })
+      setTokenExpiresAt(data.token_expires_at || null)
+      setTokenSavedAt(data.token_saved_at || null)
     } catch {
       setSyncStatus({ total: 0, processed: 0, status: 'idle', phase: 'idle', discovered: 0 })
+      setTokenExpiresAt(null)
+      setTokenSavedAt(null)
     }
   }, [ready, userId])
 
@@ -278,18 +313,24 @@ export default function ReelsPage() {
 
   useEffect(() => {
     const refreshLists = () => { fetchMasterLists() }
+    const refreshStatus = () => { void fetchSyncStatus() }
     const onVisible = () => {
-      if (document.visibilityState === 'visible') fetchMasterLists()
+      if (document.visibilityState === 'visible') {
+        fetchMasterLists()
+        void fetchSyncStatus()
+      }
     }
     window.addEventListener('master-lists-updated', refreshLists)
     window.addEventListener('focus', refreshLists)
+    window.addEventListener('focus', refreshStatus)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.removeEventListener('master-lists-updated', refreshLists)
       window.removeEventListener('focus', refreshLists)
+      window.removeEventListener('focus', refreshStatus)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [fetchMasterLists])
+  }, [fetchMasterLists, fetchSyncStatus])
 
   useEffect(() => {
     if (syncStatus.status !== 'running') return
@@ -648,6 +689,59 @@ export default function ReelsPage() {
         </div>
       )}
 
+      {tokenDaysLeft !== null ? (
+        <div
+          className={`mb-4 rounded-xl border px-4 py-3 text-[12px] leading-relaxed ${
+            showTokenRenewal
+              ? 'border-[var(--amber)]/35 bg-[var(--amber)]/10 text-[var(--amber)]'
+              : 'border-[var(--border2)] bg-[var(--bg2)] text-[var(--text3)]'
+          }`}
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {showTokenRenewal ? (
+                tokenDaysLeft === 0 ? (
+                  'El token de Instagram venció. Renovalo para seguir sincronizando reels e historias.'
+                ) : (
+                  `Renová el token de Instagram: quedan ${tokenDaysLeft} día${tokenDaysLeft === 1 ? '' : 's'}.`
+                )
+              ) : (
+                <>
+                  Token Instagram:{' '}
+                  <span className="font-medium text-[var(--text2)]">
+                    {tokenDaysLeft} día{tokenDaysLeft === 1 ? '' : 's'} restantes
+                  </span>
+                  {tokenRenewByLabel ? (
+                    <>
+                      {' '}
+                      · renovar antes del {tokenRenewByLabel}
+                    </>
+                  ) : null}
+                  {tokenSavedAtLabel ? (
+                    <>
+                      {' '}
+                      · colocado el {tokenSavedAtLabel}
+                    </>
+                  ) : null}
+                  {' '}
+                  (avisamos desde 5 días antes).
+                </>
+              )}
+            </span>
+            {showTokenRenewal ? (
+              <div className="flex shrink-0 flex-wrap gap-3 text-[11px] font-semibold uppercase tracking-wide">
+                <Link href="/conexiones" className="underline underline-offset-2 hover:opacity-80">
+                  Conexiones
+                </Link>
+                <Link href="/configuracion/instagram-token-guide" className="underline underline-offset-2 hover:opacity-80">
+                  Guía token
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <button
           onClick={handleRefreshMetrics}
@@ -698,7 +792,20 @@ export default function ReelsPage() {
       {syncMessage && <div className={`mb-4 text-[12px] ${syncMessage.startsWith('Error') ? 'text-[var(--text2)]' : 'text-[var(--text3)]'}`}>{syncMessage}</div>}
 
       {reels.length === 0 ? (
-        <div className="py-16 text-center text-[13px] text-[var(--text3)]">Sin reels para este filtro. Sincroniza Instagram para empezar.</div>
+        <div className="rounded-xl border border-dashed border-[var(--border2)] py-16 text-center text-[13px] text-[var(--text3)]">
+          {monthMode === 'all' ? (
+            <>
+              No hay reels importados. Tocá <span className="text-[var(--text2)]">Sincronizar Instagram</span> o revisá Conexiones API.
+            </>
+          ) : monthMode === 'current' ? (
+            <>
+              No hay reels con publicación en <span className="text-[var(--text2)]">{filterSubtitle}</span>. Probá{' '}
+              <span className="text-[var(--text2)]">Todos</span> o elegí otro mes.
+            </>
+          ) : (
+            <>No hay reels en los meses seleccionados. Elegí otros meses o usá «Todos».</>
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {reels.map((reel) => (

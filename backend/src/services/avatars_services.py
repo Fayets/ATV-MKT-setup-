@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from pony.orm import db_session, flush
 
+from src.db_query_utils import rows_for_user
 from src.models import ApiConnection, AuthUser, AvatarType, Lead, OfferedProgram
 from src.schemas import (
     AvatarTypeCreateRequest,
@@ -42,7 +43,7 @@ def _valid_hex_color(raw: str | None) -> str:
 
 class AvatarsServices:
     def _rows_for_user(self, uid: int) -> list[AvatarType]:
-        return [a for a in list(AvatarType.select()) if int(a.user_id) == uid]
+        return rows_for_user(AvatarType, uid)
 
     def _nombre_taken(self, uid: int, nombre: str, exclude_id: int | None = None) -> bool:
         key = normalize_avatar_lookup_key(nombre)
@@ -90,9 +91,7 @@ class AvatarsServices:
         if not key:
             return 0
         count = 0
-        for lead in list(Lead.select()):
-            if int(lead.user_id) != uid:
-                continue
+        for lead in rows_for_user(Lead, uid):
             av = normalize_avatar_lookup_key(lead.avatar or "")
             if av and av == key:
                 count += 1

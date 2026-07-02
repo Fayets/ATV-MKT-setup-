@@ -32,7 +32,7 @@ def seed_bio_leads(*, user_id: int | None = None, force: bool = False) -> int:
         if user_id is None:
             users = list(AuthUser.select())
             if not users:
-                raise RuntimeError("No hay usuarios. Completá /setup antes de correr el seed.")
+                raise RuntimeError("No hay usuarios. Creá uno con POST /api/auth/register o el seed.")
             user_id = int(users[0].id)
 
         uid = int(user_id)

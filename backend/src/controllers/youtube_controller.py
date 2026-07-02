@@ -14,6 +14,8 @@ from pony.orm import ObjectNotFound, db_session
 from src.db import db
 from src.schemas import YoutubeVideoPatchRequest
 from src.models import ApiConnection, Lead, YoutubeContent
+from src.db_query_utils import rows_for_user
+from src.services.lead_stats_utils import AgendaStats, agenda_stats_for, load_user_agenda_stats
 
 router = APIRouter(prefix="/api/youtube", tags=["youtube"], redirect_slashes=False)
 
@@ -173,19 +175,32 @@ def _cash_parts_for_youtube_row(
     *,
     user_id: int,
     skip_agg: bool = False,
+    agenda_stats: dict[str, AgendaStats] | None = None,
 ) -> tuple[float, float, float, int]:
     """(cash_manual, cash_leads, cash_total, agendas)."""
     vid = int(row.id)
     cash_manual_f = float(row.cash or 0)
     if skip_agg:
         return cash_manual_f, 0.0, cash_manual_f, 0
-    cash_leads_f = _sum_pago_agenda_for_youtube(user_id, vid)
+    tid = f"youtube:{vid}"
+    if agenda_stats is not None:
+        st = agenda_stats_for(agenda_stats, tid)
+        cash_leads_f = st.cash
+        agendas_n = st.agendas
+    else:
+        cash_leads_f = _sum_pago_agenda_for_youtube(user_id, vid)
+        agendas_n = _count_agendas_for_youtube_video(user_id, vid)
     cash_total_f = cash_manual_f + cash_leads_f
-    agendas_n = _count_agendas_for_youtube_video(user_id, vid)
     return cash_manual_f, cash_leads_f, cash_total_f, agendas_n
 
 
-def _row_to_video(row: YoutubeContent, *, user_id: int, skip_agg: bool = False) -> dict:
+def _row_to_video(
+    row: YoutubeContent,
+    *,
+    user_id: int,
+    skip_agg: bool = False,
+    agenda_stats: dict[str, AgendaStats] | None = None,
+) -> dict:
     ph = row.performance_history if isinstance(row.performance_history, list) else []
     cls = dict(row.classification) if isinstance(row.classification, dict) else {}
     raw_desc = (row.description or "").strip()
@@ -194,7 +209,7 @@ def _row_to_video(row: YoutubeContent, *, user_id: int, skip_agg: bool = False) 
     pub = row.published_at
     published_iso = pub.isoformat() if pub is not None else None
     cash_manual_f, cash_leads_f, cash_total_f, agendas_n = _cash_parts_for_youtube_row(
-        row, user_id=user_id, skip_agg=skip_agg
+        row, user_id=user_id, skip_agg=skip_agg, agenda_stats=agenda_stats
     )
     cash_manual_i = int(round(cash_manual_f))
     cash_leads_i = int(round(cash_leads_f))
@@ -229,7 +244,13 @@ def _row_to_video(row: YoutubeContent, *, user_id: int, skip_agg: bool = False) 
     }
 
 
-def _aggregate_from_rows(video_rows: list[YoutubeContent], *, user_id: int) -> dict[str, Any]:
+def _aggregate_from_rows(
+    video_rows: list[YoutubeContent],
+    *,
+    user_id: int,
+    skip_agg: bool = False,
+    agenda_stats: dict[str, AgendaStats] | None = None,
+) -> dict[str, Any]:
     n = len(video_rows)
     if n == 0:
         return {
@@ -246,7 +267,10 @@ def _aggregate_from_rows(video_rows: list[YoutubeContent], *, user_id: int) -> d
     total_likes = sum(int(r.likes or 0) for r in video_rows)
     total_comments = sum(int(r.comments_count or 0) for r in video_rows)
     total_cash = sum(
-        _cash_parts_for_youtube_row(r, user_id=user_id, skip_agg=False)[2] for r in video_rows
+        _cash_parts_for_youtube_row(
+            r, user_id=user_id, skip_agg=skip_agg, agenda_stats=agenda_stats
+        )[2]
+        for r in video_rows
     )
     total_chats = sum(int(r.chats or 0) for r in video_rows)
     ctr_vals = [float(r.ctr) for r in video_rows if r.ctr is not None and float(r.ctr) > 0]
@@ -343,7 +367,7 @@ def sync_youtube(user_id: Annotated[str, Depends(require_user_id)]) -> dict[str,
 
     with db_session:
         # Python 3.13: no usar `select(lambda …)` / `select(r for …)` — el decompilador de Pony falla.
-        by_eid = {r.external_id: r for r in list(YoutubeContent.select()) if r.user_id == uid}
+        by_eid = {r.external_id: r for r in rows_for_user(YoutubeContent, uid)}
         for it in vitems:
             eid = it.get("id") or ""
             if not eid:
@@ -444,7 +468,7 @@ def list_youtube_videos(
         scope = "month"
 
     with db_session:
-        rows = [r for r in list(YoutubeContent.select()) if r.user_id == uid]
+        rows = rows_for_user(YoutubeContent, uid)
 
     avail: set[str] = set()
     for row in rows:
@@ -466,7 +490,10 @@ def list_youtube_videos(
 
     filtered_rows.sort(key=_row_pub_sort, reverse=True)
 
-    aggregates = _aggregate_from_rows(filtered_rows, user_id=uid)
+    agenda_stats = None if skip_agg else load_user_agenda_stats(uid)
+    aggregates = _aggregate_from_rows(
+        filtered_rows, user_id=uid, skip_agg=skip_agg, agenda_stats=agenda_stats
+    )
     total_count = len(filtered_rows)
     total_pages = (total_count + page_size - 1) // page_size if total_count else 0
     page_eff = page
@@ -475,7 +502,7 @@ def list_youtube_videos(
     start = (page_eff - 1) * page_size
     page_rows = filtered_rows[start : start + page_size]
     page_videos = [
-        _row_to_video(r, user_id=uid, skip_agg=skip_agg) for r in page_rows
+        _row_to_video(r, user_id=uid, skip_agg=skip_agg, agenda_stats=agenda_stats) for r in page_rows
     ]
 
     return {
@@ -512,7 +539,7 @@ def youtube_metrics(
         scope = "month"
 
     with db_session:
-        rows = [r for r in list(YoutubeContent.select()) if r.user_id == uid]
+        rows = rows_for_user(YoutubeContent, uid)
 
     month_rows: list[YoutubeContent] = []
     for r in rows:
@@ -526,8 +553,10 @@ def youtube_metrics(
     total_views = sum(int(r.views or 0) for r in month_rows)
     total_likes = sum(int(r.likes or 0) for r in month_rows)
     total_comments = sum(int(r.comments_count or 0) for r in month_rows)
+    agenda_stats = load_user_agenda_stats(uid)
     total_cash = sum(
-        _cash_parts_for_youtube_row(r, user_id=uid, skip_agg=False)[2] for r in month_rows
+        _cash_parts_for_youtube_row(r, user_id=uid, skip_agg=False, agenda_stats=agenda_stats)[2]
+        for r in month_rows
     )
     total_chats = sum(int(r.chats or 0) for r in month_rows)
     ctr_vals = [float(r.ctr) for r in month_rows if r.ctr is not None and float(r.ctr) > 0]

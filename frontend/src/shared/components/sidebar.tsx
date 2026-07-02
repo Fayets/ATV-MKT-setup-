@@ -6,7 +6,6 @@ import { logout } from '@/features/auth/services/auth-service'
 import { useState } from 'react'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
 import { BrandLogo } from '@/shared/components/brand-logo'
-import type { CompanyConfigPublic } from '@/shared/lib/company-config.server'
 
 type NavLeaf = { label: string; href: string }
 /** `children` = subítems (ej. Métricas reels bajo Reels). */
@@ -81,11 +80,10 @@ function capitalizeFirstLetter(label: string): string {
 }
 
 type SidebarProps = {
-  companyConfig?: CompanyConfigPublic
   className?: string
 }
 
-export function Sidebar({ companyConfig, className }: SidebarProps) {
+export function Sidebar({ className }: SidebarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { username, ready } = useAuthUser()
@@ -103,8 +101,7 @@ export function Sidebar({ companyConfig, className }: SidebarProps) {
     >
       <div className="flex justify-center px-4 pt-4 pb-3">
         <BrandLogo
-          logoUrl={companyConfig?.logo_url}
-          alt={companyConfig?.company_name || 'ATV'}
+          alt="ATV"
           className="h-12 w-auto max-w-[72px] flex-shrink-0 object-contain opacity-95"
         />
       </div>

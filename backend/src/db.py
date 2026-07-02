@@ -1140,9 +1140,47 @@ def _migrate_postgres_storysequence_cta_to_boolean() -> None:
         conn.close()
 
 
+def _migrate_postgres_query_performance_indexes() -> None:
+    """Índices para filtros frecuentes (user_id + fecha / lookups de sync)."""
+    if (config("DB_PROVIDER", default="") or "").strip().lower() != "postgres":
+        return
+    try:
+        import psycopg2
+    except ImportError:
+        return
+    try:
+        conn = psycopg2.connect(
+            user=config("DB_USER"),
+            password=config("DB_PASS"),
+            host=config("DB_HOST"),
+            dbname=config("DB_NAME"),
+        )
+    except Exception:
+        return
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            for ddl in (
+                "CREATE INDEX IF NOT EXISTS idx_reelcontent_user_fecha ON reelcontent (user_id, fecha_publicacion DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_youtubecontent_user_published ON youtubecontent (user_id, published_at DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_storysequence_user_date ON storysequence (user_id, sequence_date)",
+                "CREATE INDEX IF NOT EXISTS idx_storyslide_instagram_media_id ON storyslide (instagram_media_id)",
+                "CREATE INDEX IF NOT EXISTS idx_setter_report_user_fecha ON setter_report (user_id, fecha)",
+                "CREATE INDEX IF NOT EXISTS idx_closer_report_user_fecha ON closer_report (user_id, fecha)",
+                "CREATE INDEX IF NOT EXISTS idx_lead_user_agendo ON lead (user_id, agendo) WHERE agendo IS NOT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_lead_user_punto_agenda ON lead (user_id, (trim(both from coalesce(punto_agenda, '')))) WHERE trim(both from coalesce(punto_agenda, '')) <> ''",
+            ):
+                try:
+                    cur.execute(ddl)
+                except Exception:
+                    pass
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     if not ensure_db_bound():
-        raise RuntimeError("Base de datos no configurada. Completá /setup primero.")
+        raise RuntimeError("Base de datos no configurada. Configurá DATABASE_URL en backend/.env.")
 
     import src.models  # noqa: F401 — registrar entidades Pony antes del mapping
 
@@ -1163,6 +1201,7 @@ def init_db() -> None:
     _migrate_postgres_seguimiento_report()
     _migrate_postgres_reelcontent_cta_to_boolean()
     _migrate_postgres_storysequence_cta_to_boolean()
+    _migrate_postgres_query_performance_indexes()
     db.generate_mapping(create_tables=True)
     from src.services.avatars_services import seed_default_avatars_for_existing_users
 

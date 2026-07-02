@@ -18,6 +18,7 @@ from src.controllers.webhook_controller import (
     _merge_calendly_email_notas,
     _parse_calendly_start_time,
 )
+from src.db_query_utils import rows_for_user
 from src.lead_display_utils import compute_dias_para_agendar
 from src.models import ApiConnection, Lead
 
@@ -98,7 +99,7 @@ def _find_lead_by_email(user_id: int, email: str) -> Lead | None:
     if not key:
         return None
     matches: list[Lead] = []
-    for row in Lead.select(lambda l: l.user_id == user_id):
+    for row in rows_for_user(Lead, user_id):
         stored = _email_from_notas(row.notas)
         if stored and stored.casefold() == key:
             matches.append(row)

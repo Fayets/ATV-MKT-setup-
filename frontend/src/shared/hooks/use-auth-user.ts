@@ -3,6 +3,18 @@
 import { useState, useEffect } from 'react'
 import { resolveBackendUserId, resolveSessionUsername } from '@/lib/api'
 
+const BACKEND_BASE =
+  (process.env.NEXT_PUBLIC_BACKEND_URL || '').trim().replace(/\/$/, '') || '/api-backend'
+
+function persistUserId(userId: number) {
+  if (typeof window === 'undefined' || !Number.isFinite(userId)) return
+  const id = String(userId)
+  localStorage.setItem('auth_user_id', id)
+  sessionStorage.setItem('auth_user_id', id)
+  sessionStorage.setItem('user_id', id)
+  sessionStorage.setItem('evoluciona_user_id', id)
+}
+
 /** `user_id` entero del login FastAPI (string en el cliente), o null si no hay sesión. */
 export function useAuthUser() {
   const [userId, setUserId] = useState<string | null>(null)
@@ -10,17 +22,52 @@ export function useAuthUser() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    const sync = () => {
-      setUserId(resolveBackendUserId())
-      setUsername(resolveSessionUsername())
+    let cancelled = false
+
+    const sync = async () => {
+      let uid = resolveBackendUserId()
+      const uname = resolveSessionUsername()
+
+      if (!uid && typeof window !== 'undefined') {
+        const token =
+          sessionStorage.getItem('evoluciona_token') ||
+          sessionStorage.getItem('access_token') ||
+          sessionStorage.getItem('token') ||
+          sessionStorage.getItem('auth_token')
+        if (token) {
+          try {
+            const res = await fetch(`${BACKEND_BASE}/auth/me`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            if (res.ok) {
+              const data = (await res.json()) as { user_id?: number }
+              if (typeof data.user_id === 'number' && Number.isFinite(data.user_id)) {
+                persistUserId(data.user_id)
+                uid = String(data.user_id)
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
+      if (cancelled) return
+      setUserId(uid)
+      setUsername(uname)
+      setReady(true)
     }
-    sync()
-    setReady(true)
-    window.addEventListener('auth-session-changed', sync)
-    window.addEventListener('storage', sync)
+
+    void sync()
+    const onSessionChange = () => {
+      void sync()
+    }
+    window.addEventListener('auth-session-changed', onSessionChange)
+    window.addEventListener('storage', onSessionChange)
     return () => {
-      window.removeEventListener('auth-session-changed', sync)
-      window.removeEventListener('storage', sync)
+      cancelled = true
+      window.removeEventListener('auth-session-changed', onSessionChange)
+      window.removeEventListener('storage', onSessionChange)
     }
   }, [])
 

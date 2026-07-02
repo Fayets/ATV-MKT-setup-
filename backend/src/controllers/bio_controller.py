@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pony.orm import ObjectNotFound, db_session
 
+from src.db_query_utils import rows_for_user
 from src.models import ApiConnection, Lead as LeadEntity
 from src.schemas import BioLeadResponse, BioLeadStatusPatchRequest, BioLeadsListResponse, BioMetricsResponse, BioViaOptionsResponse
 
@@ -160,7 +161,7 @@ def _lead_to_response(row: LeadEntity) -> BioLeadResponse:
 
 def _rows_for_user_month(uid: int, month_key: tuple[int, int] | None) -> list[LeadEntity]:
     with db_session:
-        rows = [r for r in list(LeadEntity.select()) if int(r.user_id) == uid]
+        rows = rows_for_user(LeadEntity, uid)
     max_day = _max_day_mtd(month_key)
     if month_key is not None:
         y, mn = month_key

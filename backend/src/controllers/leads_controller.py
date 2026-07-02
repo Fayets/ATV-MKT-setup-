@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pony.orm import ObjectNotFound, db_session
 
+from src.db_query_utils import rows_for_user
 from src.lead_display_utils import compute_dias_para_agendar, lead_display_nombre
 from src.models import Lead as LeadEntity, ReelContent, StorySequence, YoutubeContent
 from src.schemas import (
@@ -304,9 +305,11 @@ def list_leads(
 
     with db_session:
         norm_prices = build_program_norm_price_map(uid)
-        rows = [r for r in list(LeadEntity.select()) if int(r.user_id) == uid]
         if not include_all:
+            rows = rows_for_user(LeadEntity, uid)
             rows = [r for r in rows if r.agendo is not None]
+        else:
+            rows = rows_for_user(LeadEntity, uid)
         if month_key is not None:
             year_m, month_m = month_key
             rows = [
@@ -408,7 +411,7 @@ def leads_metrics(
         if month_key is None:
             raise HTTPException(status_code=400, detail="Parámetro month inválido (usar YYYY-MM).")
     with db_session:
-        rows = [r for r in list(LeadEntity.select()) if int(r.user_id) == uid]
+        rows = rows_for_user(LeadEntity, uid)
         if month_key is not None:
             y, mn = month_key
             rows = [

@@ -1,9 +1,8 @@
 'use client'
 
 import { login } from '@/features/auth/services/auth-service'
-import { API_BASE } from '@/shared/lib/backend-public-url'
 import { useRouter } from 'next/navigation'
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useState } from 'react'
 
 const LABEL_CLASS = 'mb-2 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]'
 const INPUT_CLASS =
@@ -15,15 +14,6 @@ export function LoginPageClient() {
   const router = useRouter()
   const [error, setError] = useState('')
   const [pending, setPending] = useState(false)
-
-  useEffect(() => {
-    fetch(`${API_BASE}/api/setup/status`)
-      .then((r) => r.json())
-      .then((data: { configured?: boolean }) => {
-        if (!data.configured) router.replace('/onboarding')
-      })
-      .catch(() => {})
-  }, [router])
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
