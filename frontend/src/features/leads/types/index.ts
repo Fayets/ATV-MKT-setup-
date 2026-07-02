@@ -30,7 +30,7 @@ export type Lead = {
   program_offered: string | null
   /** Programa ofrecido en la llamada (BD `programada_ofrecido_llamada`); no usado en facturación. */
   programada_ofrecido_llamada: string | null
-  /** Precio USD del catálogo en BD (GET /leads); mismo criterio que Ajustes → Programas. */
+  /** Precio en euros del catálogo en BD (GET /leads); mismo criterio que Ajustes → Programas. */
   program_price_usd?: number | null
   revenue: number
   payment: number

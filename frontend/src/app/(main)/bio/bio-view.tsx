@@ -5,7 +5,7 @@ import { useMonthContext } from '@/shared/components/app-providers'
 import { MonthSelector } from '@/shared/components/month-selector'
 import { useToast } from '@/shared/components/toast'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
-import { formatCash } from '@/shared/lib/format-utils'
+import { formatCash, formatCashDecimal } from '@/shared/lib/format-utils'
 
 type BioLead = {
   id: string
@@ -63,8 +63,8 @@ const AR_TZ = 'America/Argentina/Buenos_Aires'
 
 /** Fecha agendó: dd/mm/año en Argentina; si no es parseable, se muestra el texto tal cual. */
 function formatCashPorChat(n: number): string {
-  if (n === 0) return '$0'
-  return `$${n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  if (n === 0) return formatCash(0)
+  return formatCashDecimal(n)
 }
 
 function formatFechaAgendoDisplay(raw: string | null | undefined): string {

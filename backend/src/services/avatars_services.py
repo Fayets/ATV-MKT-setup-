@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import HTTPException
 from pony.orm import db_session, flush
@@ -71,21 +71,6 @@ class AvatarsServices:
             sort_order=int(row.sort_order or 0),
         )
 
-    def _ensure_default_avatars(self, uid: int) -> None:
-        if self._rows_for_user(uid):
-            return
-        now = datetime.now(timezone.utc)
-        for i, (nombre, color) in enumerate(DEFAULT_AVATARS):
-            AvatarType(
-                user_id=uid,
-                nombre=nombre,
-                color=color,
-                activo=True,
-                sort_order=i,
-                created_at=now,
-            )
-        flush()
-
     def _lead_count_using_avatar(self, uid: int, nombre: str) -> int:
         key = normalize_avatar_lookup_key(nombre)
         if not key:
@@ -100,7 +85,6 @@ class AvatarsServices:
     def list_for_user(self, user_id: int) -> AvatarTypesListResponse:
         try:
             with db_session:
-                self._ensure_default_avatars(user_id)
                 rows = sorted(
                     self._rows_for_user(user_id),
                     key=lambda r: (int(r.sort_order or 0), int(r.id)),
@@ -119,7 +103,6 @@ class AvatarsServices:
         color = _valid_hex_color(body.color)
         try:
             with db_session:
-                self._ensure_default_avatars(user_id)
                 if self._nombre_taken(user_id, nombre):
                     raise HTTPException(status_code=400, detail="Ya existe un avatar con ese nombre.")
                 row = AvatarType(
@@ -128,7 +111,7 @@ class AvatarsServices:
                     color=color,
                     activo=bool(body.activo),
                     sort_order=self._next_sort_order(user_id),
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.utcnow(),
                 )
                 flush()
                 return self._to_out(row)
@@ -203,7 +186,7 @@ def seed_default_avatars_for_existing_users() -> None:
             for row in list(OfferedProgram.select()):
                 user_ids.add(int(row.user_id))
 
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             for uid in user_ids:
                 if [a for a in list(AvatarType.select()) if int(a.user_id) == uid]:
                     continue

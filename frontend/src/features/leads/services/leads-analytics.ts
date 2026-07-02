@@ -31,7 +31,7 @@ export type WeekMetrics = {
   cierres: number[]
   /** Cash por bucket: reportes closer ventas (`ingreso`) + formularios seguimiento. El embudo mensual `ingresos` sigue siendo Pagó + seguimiento. */
   ingresos: number[]
-  /** Facturación USD (mismo criterio que `funnel.facturacion` / `leadFacturacionUsd`) por bucket semanal. */
+  /** Facturación en euros (mismo criterio que `funnel.facturacion` / `leadFacturacionUsd`) por bucket semanal. */
   facturacion: number[]
   noShows: number[]
 }
@@ -448,6 +448,8 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
     conversaciones,
     analytics: {
       ...funnel,
+      chatsStories,
+      chatsReels,
       programas,
       byWeek,
       byWeekDay,

@@ -94,6 +94,7 @@ async def auto_refresh_reels_metrics() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if is_db_configured():
+        print("[startup] Conectando a la base de datos (puede tardar unos segundos la primera vez)...")
         init_db()
         print(f"[media] Directorio: {media_dir}")
         # No ejecutar sync al arrancar: evita picos de red/CPU justo al levantar el servidor.

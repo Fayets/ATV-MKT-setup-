@@ -1,7 +1,8 @@
 import type { ChannelBreakdown } from '../types/dashboard'
+import { formatCash } from '@/shared/lib/format-utils'
 
 function fmt(n: number): string {
-  return '$' + Math.round(n).toLocaleString('es-AR')
+  return formatCash(n)
 }
 
 type ChannelBreakdownProps = {

@@ -58,7 +58,12 @@ export function mapCalendlyToLead(body: CalendlyPayload, webhookToken: string) {
     p_avatar_type: findAnswer(qa, 'perfil') || findAnswer(qa, 'opciones describe'),
     p_scheduled_at: parseCalendlyDate(payload.created_at),
     p_call_at: parseCalendlyDate(payload.scheduled_event.start_time),
-    p_ingresos_mensuales: parseIngresos(findAnswer(qa, 'generando mensualmente') || findAnswer(qa, 'USD')),
+    p_ingresos_mensuales: parseIngresos(
+      findAnswer(qa, 'generando mensualmente') ||
+        findAnswer(qa, 'EUR') ||
+        findAnswer(qa, 'euros') ||
+        findAnswer(qa, 'USD'),
+    ),
     p_compromiso: findAnswer(qa, 'comprometida') || findAnswer(qa, 'decision'),
     p_dolores_setting: findAnswer(qa, 'problema') || findAnswer(qa, 'cuello de botella'),
     p_urgencia: findAnswer(qa, 'pronto') || findAnswer(qa, 'resolver'),

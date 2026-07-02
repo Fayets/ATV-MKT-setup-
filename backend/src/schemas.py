@@ -460,7 +460,7 @@ class LeadOut(BaseModel):
     )
     program_price_usd: float | None = Field(
         default=None,
-        description="Precio USD del catálogo (OfferedProgram) si coincide `programa_ofrecido` en BD.",
+        description="Precio en euros del catálogo (OfferedProgram) si coincide `programa_ofrecido` en BD.",
     )
     revenue: float = 0
     payment: float = 0

@@ -890,7 +890,7 @@ export default function HistoriasPage() {
                       <div className="rounded-lg bg-[var(--bg4)] p-4 text-center">
                         <div className="text-[9px] uppercase tracking-wider text-[var(--text3)]">Cash por Chat</div>
                         <div className="font-mono-num text-2xl font-bold">
-                          {sec.chats > 0 ? formatCash(sec.cash_generado / sec.chats) : '$0'}
+                          {sec.chats > 0 ? formatCash(sec.cash_generado / sec.chats) : formatCash(0)}
                         </div>
                       </div>
                       <div className="rounded-lg bg-[var(--bg4)] p-4 text-center">

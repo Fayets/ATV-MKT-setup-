@@ -682,7 +682,7 @@ export function DailyReportSection({ role }: Props) {
               </div>
               <div className="text-[11px]">
                 <span className="text-[var(--text3)]">Ticket prom:</span>{' '}
-                <span className="font-semibold text-[var(--green)]">{form.cierres > 0 ? formatCash(form.ingreso / form.cierres) : '$0'}</span>
+                <span className="font-semibold text-[var(--green)]">{form.cierres > 0 ? formatCash(form.ingreso / form.cierres) : formatCash(0)}</span>
               </div>
             </div>
           )}

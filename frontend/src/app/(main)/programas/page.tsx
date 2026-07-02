@@ -7,8 +7,8 @@ import { useAuthUser } from '@/shared/hooks/use-auth-user'
 
 type ProgramRow = { id: number; name: string; price_usd: number; sort_order: number }
 
-function formatUsd(n: number) {
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n)
+function formatEur(n: number) {
+  return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n)
 }
 
 export default function ProgramasPage() {
@@ -192,7 +192,7 @@ export default function ProgramasPage() {
       <div className="mb-8">
         <h2 className="text-lg font-semibold tracking-tight text-[var(--text)]">Programas</h2>
         <p className="mt-1 text-[12px] text-[var(--text3)]">
-          Definí cada oferta con su precio en USD. En Leads, la columna «Prog. ofrecido» usa esta lista; el panel de
+          Definí cada oferta con su precio en euros. En Leads, la columna «Prog. ofrecido» usa esta lista; el panel de
           ventas usa estos importes como facturación por cierre.
         </p>
       </div>
@@ -214,7 +214,7 @@ export default function ProgramasPage() {
             />
           </label>
           <label className="flex w-[140px] flex-col gap-1">
-            <span className="text-[11px] text-[var(--text3)]">Precio USD</span>
+            <span className="text-[11px] text-[var(--text3)]">Precio (€)</span>
             <input
               type="text"
               inputMode="decimal"
@@ -282,7 +282,7 @@ export default function ProgramasPage() {
                           className="w-[120px] rounded border border-[var(--accent)] bg-[var(--bg3)] px-2 py-1 text-[13px] outline-none"
                         />
                       ) : (
-                        formatUsd(p.price_usd)
+                        formatEur(p.price_usd)
                       )}
                     </td>
                     <td className="px-4 py-3">

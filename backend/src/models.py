@@ -135,7 +135,7 @@ class MasterList(db.Entity):
 
 
 class OfferedProgram(db.Entity):
-    """Programas ofrecibles en leads (nombre + precio USD para facturación)."""
+    """Programas ofrecibles en leads (nombre + precio en euros para facturación)."""
 
     _table_ = "offered_program"
 

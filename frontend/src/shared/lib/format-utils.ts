@@ -15,8 +15,34 @@ export function formatIsoDateDdMmYyyy(iso: string): string {
   return `${m[3]}-${m[2]}-${m[1]}`
 }
 
+const CASH_FORMAT = new Intl.NumberFormat('es-ES', {
+  style: 'currency',
+  currency: 'EUR',
+  maximumFractionDigits: 0,
+})
+
+const CASH_FORMAT_DECIMALS = new Intl.NumberFormat('es-ES', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
 export function formatCash(n: number): string {
-  return '$' + Math.round(n).toLocaleString('es-AR')
+  return CASH_FORMAT.format(Math.round(n))
+}
+
+/** Montos con decimales (p. ej. cash por chat en BIO). */
+export function formatCashDecimal(n: number): string {
+  return CASH_FORMAT_DECIMALS.format(n)
+}
+
+/** Eje compacto de gráficos (€1k, €500, …). */
+export function formatCashAxisShort(v: string | number): string {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return formatCash(0)
+  if (Math.abs(n) >= 1000) return `€${Math.round(n / 1000)}k`
+  return formatCash(n)
 }
 
 export function formatK(n: number): string {

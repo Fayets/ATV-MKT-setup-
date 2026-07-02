@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { apiFetch } from '@/lib/api'
+import { formatCash } from '@/shared/lib/format-utils'
 import { useToast } from '@/shared/components/toast'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
 
@@ -1487,11 +1488,6 @@ function formatMonthLabel(ym: string): string {
   if (!y || !m) return ym
   const d = new Date(y, m - 1, 1)
   return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
-}
-
-function formatCash(value: number): string {
-  const n = Number(value || 0)
-  return `$${Math.round(n).toLocaleString('es-AR')}`
 }
 
 function formatInt(value: number): string {

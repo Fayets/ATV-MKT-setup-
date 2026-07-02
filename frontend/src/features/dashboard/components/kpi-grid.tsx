@@ -1,9 +1,10 @@
 import type { DashboardData } from '../types/dashboard'
+import { formatCash } from '@/shared/lib/format-utils'
 import { KpiCard } from './kpi-card'
 import { ChannelBreakdownCard } from './channel-breakdown'
 
 function fmt(n: number): string {
-  return '$' + Math.round(n).toLocaleString('es-AR')
+  return formatCash(n)
 }
 
 function trendCalc(current: number, previous: number): { value: string; direction: 'up' | 'down' | 'neutral' } {

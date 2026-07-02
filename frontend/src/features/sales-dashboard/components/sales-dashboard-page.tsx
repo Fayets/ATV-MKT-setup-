@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useMonthContext } from '@/shared/components/app-providers'
 import { MonthSelector } from '@/shared/components/month-selector'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
-import { formatCash } from '@/shared/lib/format-utils'
+import { formatCash, formatCashAxisShort } from '@/shared/lib/format-utils'
 import { Bar, Line } from '@/shared/components/charts-lazy'
 import { getLeadsAnalytics } from '@/features/leads/services/leads-analytics'
 import type { VDData } from '@/features/sales-dashboard/sales-dashboard-vd'
@@ -32,6 +32,8 @@ export function SalesDashboardPage() {
     return {
       ...analytics,
       chats: analytics.chats,
+      chatsStories: (analytics as { chatsStories?: number }).chatsStories ?? 0,
+      chatsReels: (analytics as { chatsReels?: number }).chatsReels ?? 0,
       agendasByWeek: analytics.byWeek.agendas,
       conversacionesByWeek: analytics.byWeek.conversaciones,
       showsByWeek: analytics.byWeek.shows,
@@ -198,6 +200,13 @@ function VDFunnel({ d }: { d: VDData }) {
                 <div className="font-mono-num text-[22px] font-bold" style={{ color: segment.valueColor }}>
                   {s.value}
                 </div>
+                {s.label === 'CHATS' && (
+                  <div className="mt-1 flex items-center justify-center gap-2 text-[9px]" style={{ color: segment.labelColor }}>
+                    <span>Historias <span className="font-mono-num" style={{ color: segment.valueColor }}>{fN(d.chatsStories)}</span></span>
+                    <span aria-hidden="true">·</span>
+                    <span>Reels <span className="font-mono-num" style={{ color: segment.valueColor }}>{fN(d.chatsReels)}</span></span>
+                  </div>
+                )}
               </div>
             </div>
             )
@@ -430,7 +439,7 @@ function SemanalView({ curr }: { curr: VDData }) {
         </ChartCard>
         <ChartCard title="Ingresos por semana" value={formatCash(curr.ingresosByWeek.reduce((s, v) => s + v, 0))} subtitle="closer ventas + seguimiento">
           <Bar data={{ labels: weeks, datasets: [{ data: curr.ingresosByWeek, backgroundColor: 'rgba(34,197,94,0.25)', hoverBackgroundColor: '#22C55E', borderRadius: 8, borderSkipped: false, barPercentage: 0.5, categoryPercentage: 0.7 }] }}
-            options={{ responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.6)', font: { size: 11 } } }, y: { grid: { color: 'rgba(255,255,255,0.03)', drawTicks: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.4)', font: { size: 10 }, padding: 8, maxTicksLimit: 4, callback: (v: string | number) => '$' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(0) + 'k' : v) } } }, plugins: { tooltip: { backgroundColor: 'rgba(0,0,0,0.85)', padding: 10, cornerRadius: 8, displayColors: false, callbacks: { label: (ctx: { parsed: { y: number | null } }) => formatCash(ctx.parsed.y ?? 0) } } } }} />
+            options={{ responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.6)', font: { size: 11 } } }, y: { grid: { color: 'rgba(255,255,255,0.03)', drawTicks: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.4)', font: { size: 10 }, padding: 8, maxTicksLimit: 4, callback: (v: string | number) => formatCashAxisShort(v) } } }, plugins: { tooltip: { backgroundColor: 'rgba(0,0,0,0.85)', padding: 10, cornerRadius: 8, displayColors: false, callbacks: { label: (ctx: { parsed: { y: number | null } }) => formatCash(ctx.parsed.y ?? 0) } } } }} />
         </ChartCard>
         <ChartCard title="Show Up Rate" value={fP(showUpRates.filter(v => v > 0).reduce((s, v, _, a) => s + v / a.length, 0))} subtitle="promedio">
           <Line data={{ labels: weeks, datasets: [{ data: showUpRates, borderColor: '#60A5FA', backgroundColor: 'rgba(96,165,250,0.06)', fill: true, tension: 0.4, pointRadius: 5, pointBackgroundColor: '#60A5FA', pointBorderColor: 'rgba(0,0,0,0.3)', pointBorderWidth: 2, pointHoverRadius: 7, pointHoverBackgroundColor: '#60A5FA', pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2, borderWidth: 2.5 }] }}
@@ -545,7 +554,7 @@ function DiarioView({ curr, semana, setSemana }: { curr: VDData; semana: number;
         </ChartCard>
         <ChartCard title="Ingresos diarios" value={formatCash(ingresos.reduce((s, v) => s + v, 0))} subtitle="closer ventas + seguimiento">
           <Bar data={{ labels: days, datasets: [{ data: ingresos, backgroundColor: 'rgba(34,197,94,0.25)', hoverBackgroundColor: '#22C55E', borderRadius: 6, borderSkipped: false, barPercentage: 0.6, categoryPercentage: 0.8 }] }}
-            options={{ responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.6)', font: { size: 11 } } }, y: { grid: { color: 'rgba(255,255,255,0.03)', drawTicks: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.4)', font: { size: 10 }, padding: 8, maxTicksLimit: 4, callback: (v: string | number) => '$' + (Number(v) >= 1000 ? (Number(v) / 1000).toFixed(0) + 'k' : v) } } }, plugins: { tooltip: { backgroundColor: 'rgba(0,0,0,0.85)', padding: 10, cornerRadius: 8, displayColors: false, callbacks: { label: (ctx: { parsed: { y: number | null } }) => formatCash(ctx.parsed.y ?? 0) } } } }} />
+            options={{ responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.6)', font: { size: 11 } } }, y: { grid: { color: 'rgba(255,255,255,0.03)', drawTicks: false }, border: { display: false }, ticks: { color: 'rgba(161,161,170,0.4)', font: { size: 10 }, padding: 8, maxTicksLimit: 4, callback: (v: string | number) => formatCashAxisShort(v) } } }, plugins: { tooltip: { backgroundColor: 'rgba(0,0,0,0.85)', padding: 10, cornerRadius: 8, displayColors: false, callbacks: { label: (ctx: { parsed: { y: number | null } }) => formatCash(ctx.parsed.y ?? 0) } } } }} />
         </ChartCard>
       </div>
     </div>
