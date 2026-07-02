@@ -4,11 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { useMonthContext } from '@/shared/components/app-providers'
 import { MonthSelector } from '@/shared/components/month-selector'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
-import { formatCash, formatCashAxisShort } from '@/shared/lib/format-utils'
+import { formatCash, formatCashAxisShort, formatIsoDateDdMmYyyy } from '@/shared/lib/format-utils'
+import { resolveMediaUrl } from '@/shared/lib/backend-public-url'
 import { Bar, Line } from '@/shared/components/charts-lazy'
-import { getLeadsAnalytics } from '@/features/leads/services/leads-analytics'
+import {
+  getLeadsAnalytics,
+  monthRangeIso,
+  type FunnelLeadStep,
+} from '@/features/leads/services/leads-analytics'
 import type { VDData } from '@/features/sales-dashboard/sales-dashboard-vd'
-import { useTheme } from '@/shared/components/theme-provider'
+import { Modal } from '@/shared/components/modal'
+import { apiFetch } from '@/lib/api'
 
 function fP(v: number) { return v.toFixed(1) + '%' }
 function fPOrDash(v: number) {
@@ -32,8 +38,8 @@ export function SalesDashboardPage() {
     return {
       ...analytics,
       chats: analytics.chats,
-      chatsStories: (analytics as { chatsStories?: number }).chatsStories ?? 0,
-      chatsReels: (analytics as { chatsReels?: number }).chatsReels ?? 0,
+      chatsStories: analytics.chatsStories,
+      chatsReels: analytics.chatsReels,
       agendasByWeek: analytics.byWeek.agendas,
       conversacionesByWeek: analytics.byWeek.conversaciones,
       showsByWeek: analytics.byWeek.shows,
@@ -106,7 +112,7 @@ export function SalesDashboardPage() {
         ))}
       </div>
 
-      {tab === 'mensual' && <MensualView curr={curr} prev={prev} delta={delta} />}
+      {tab === 'mensual' && <MensualView curr={curr} prev={prev} delta={delta} month={month} />}
       {tab === 'semanal' && <SemanalView curr={curr} />}
       {tab === 'diario' && <DiarioView curr={curr} semana={semana} setSemana={setSemana} />}
     </div>
@@ -130,34 +136,662 @@ function VDKpi({ label, value, change, hib = true }: { label: string; value: str
   )
 }
 
-/** Escala negro → gris (claro) o gris claro → gris oscuro (oscuro). */
-function funnelSegmentStyle(index: number, isLight: boolean): {
+const FUNNEL_LAYER_BG = [
+  'var(--funnel-layer-0)',
+  'var(--funnel-layer-1)',
+  'var(--funnel-layer-2)',
+  'var(--funnel-layer-3)',
+  'var(--funnel-layer-4)',
+] as const
+
+/** Capas del embudo — tokens ATVMkt (--funnel-layer-* en globals.css). */
+function funnelSegmentStyle(index: number): {
   background: string
   labelColor: string
   valueColor: string
 } {
-  const lightScale = ['#52525b', '#71717a', '#a1a1aa', '#d4d4d8', '#e4e4e7']
-  const darkScale = ['#e4e4e7', '#d4d4d8', '#a1a1aa', '#71717a', '#52525b']
-  const background = (isLight ? lightScale : darkScale)[index] ?? (isLight ? '#e4e4e7' : '#52525b')
-  const hex = background.replace('#', '')
-  const r = parseInt(hex.slice(0, 2), 16)
-  const g = parseInt(hex.slice(2, 4), 16)
-  const b = parseInt(hex.slice(4, 6), 16)
-  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  const onDark = luma < 0.48
   return {
-    background,
-    labelColor: onDark ? 'rgba(255, 255, 255, 0.8)' : '#71717a',
-    valueColor: onDark ? '#fafafa' : '#27272a',
+    background: FUNNEL_LAYER_BG[index] ?? FUNNEL_LAYER_BG[FUNNEL_LAYER_BG.length - 1],
+    labelColor: 'var(--text2)',
+    valueColor: 'var(--text)',
   }
 }
 
-// ── Funnel Component ──
-function VDFunnel({ d }: { d: VDData }) {
-  const { theme } = useTheme()
-  const isLight = theme === 'light'
+const FUNNEL_STEP_LABELS: Record<FunnelLeadStep, string> = {
+  CHATS: 'Chats',
+  CONVERSACIONES: 'Conversaciones',
+  AGENDAS: 'Agendas',
+  SHOWS: 'Shows',
+  CIERRES: 'Cierres',
+}
 
-  const steps = [
+type FunnelReelItem = {
+  id: string
+  title: string
+  thumbnail: string
+  chats: number
+  keyword: string
+  publishedAt: string
+  cta: boolean
+  dolor: string
+}
+
+type FunnelStorySlide = {
+  order_index: number
+  image_url: string | null
+  replies: number | null
+}
+
+type FunnelStoryItem = {
+  id: number
+  title: string
+  thumbnail: string
+  chats: number
+  sequenceDate: string
+  cta: boolean
+  dolor: string
+  slidesCount: number
+}
+
+function proxyImageHostAllowed(url: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase()
+    return (
+      h.endsWith('cdninstagram.com') ||
+      h.endsWith('instagram.com') ||
+      h.endsWith('fbcdn.net') ||
+      h.endsWith('fbsbx.com') ||
+      h.endsWith('ytimg.com') ||
+      h.endsWith('googleusercontent.com') ||
+      h.endsWith('ggpht.com')
+    )
+  } catch {
+    return false
+  }
+}
+
+function reelThumbnailUrl(metrics: Record<string, unknown> | undefined): string {
+  const raw = String(metrics?.thumbnail ?? '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('/') && !raw.startsWith('//')) return resolveMediaUrl(raw)
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    // Instagram/YouTube → proxy (misma regla que /api/proxy-image). Resto → URL directa.
+    return proxyImageHostAllowed(raw)
+      ? `/api/proxy-image?url=${encodeURIComponent(raw)}`
+      : raw
+  }
+  return resolveMediaUrl(raw)
+}
+
+function storySequenceThumbnail(slides: FunnelStorySlide[]): string {
+  const sorted = [...slides].sort((a, b) => a.order_index - b.order_index)
+  const first = sorted.find(s => String(s.image_url ?? '').trim())
+  return first ? resolveMediaUrl(first.image_url) : ''
+}
+
+function storySequenceChats(slides: FunnelStorySlide[], fallback: number): number {
+  if (!slides.length) return fallback
+  const sum = slides.reduce((s, sl) => s + (Number(sl.replies) || 0), 0)
+  return sum > 0 ? sum : fallback
+}
+
+function formatShortDate(iso: string | null | undefined): string {
+  const s = String(iso ?? '').trim().slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '—'
+  const [, mo, da] = s.split('-')
+  return `${da}/${mo}`
+}
+
+function ContentThumb({ src, alt, compact }: { src: string; alt: string; compact?: boolean }) {
+  const [err, setErr] = useState(false)
+  if (!src || err) return null
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      title={alt}
+      className={
+        compact
+          ? 'h-[72px] w-[48px] shrink-0 rounded-md border border-[var(--border2)] object-cover'
+          : 'mx-auto aspect-[9/16] w-full max-w-[120px] rounded-lg border border-[var(--border2)] object-cover'
+      }
+      onError={() => setErr(true)}
+    />
+  )
+}
+
+function ContentChatRow({
+  thumb,
+  title,
+  chats,
+  subtitle,
+}: {
+  thumb: string
+  title: string
+  chats: number
+  subtitle: string
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-[var(--border2)] bg-[var(--bg3)] p-3">
+      {thumb ? (
+        <ContentThumb src={thumb} alt={title} compact />
+      ) : (
+        <div
+          className="flex h-[72px] w-[48px] shrink-0 items-center justify-center rounded-md border border-dashed border-[var(--border2)] bg-[var(--bg4)] text-[8px] leading-tight text-center text-[var(--text3)] px-0.5"
+          aria-hidden
+        >
+          —
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] font-medium text-[var(--text)]" title={title}>
+          {title}
+        </div>
+        <div className="mt-0.5 font-mono-num text-[18px] font-bold leading-none text-[var(--accent)]">
+          {fN(chats)} <span className="text-[10px] font-semibold text-[var(--text2)]">chats</span>
+        </div>
+        {subtitle ? (
+          <p className="mt-1 truncate text-[10px] text-[var(--text3)]" title={subtitle}>
+            {subtitle}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function FunnelChatsBreakdown({
+  month,
+  chatsStories,
+  chatsReels,
+}: {
+  month: string
+  chatsStories: number
+  chatsReels: number
+}) {
+  const [reels, setReels] = useState<FunnelReelItem[]>([])
+  const [stories, setStories] = useState<FunnelStoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        const [reelsRes, storiesRes] = await Promise.all([
+          apiFetch(`/reels?page=1&page_size=50&month=${encodeURIComponent(month)}&skip_agg=1`),
+          apiFetch(`/stories/sequences?month=${encodeURIComponent(month)}`),
+        ])
+        const reelsBody = reelsRes.ok
+          ? ((await reelsRes.json().catch(() => ({}))) as { reels?: Record<string, unknown>[] })
+          : { reels: [] }
+        const storiesBody = storiesRes.ok ? await storiesRes.json().catch(() => []) : []
+
+        const reelItems: FunnelReelItem[] = (Array.isArray(reelsBody.reels) ? reelsBody.reels : [])
+          .map(r => {
+            const metrics = (r.metrics as Record<string, unknown>) || {}
+            const classification = (r.classification as Record<string, unknown>) || {}
+            return {
+              id: String(r.id ?? ''),
+              title: String(r.title ?? 'Reel sin título'),
+              thumbnail: reelThumbnailUrl(metrics),
+              chats: Number(r.chats) || 0,
+              keyword: String(r.keyword ?? '—'),
+              publishedAt: String(r.published_at ?? ''),
+              cta: Boolean(classification.cta),
+              dolor: String(classification.dolor ?? '—'),
+            }
+          })
+          .sort((a, b) => b.chats - a.chats)
+
+        const storyItems: FunnelStoryItem[] = (Array.isArray(storiesBody) ? storiesBody : [])
+          .map(raw => {
+            const seq = raw as Record<string, unknown>
+            const slides = (Array.isArray(seq.slides) ? seq.slides : []) as FunnelStorySlide[]
+            const chats = storySequenceChats(slides, Number(seq.chats) || 0)
+            return {
+              id: Number(seq.id) || 0,
+              title: String(seq.title ?? 'Secuencia sin título'),
+              thumbnail: storySequenceThumbnail(slides),
+              chats,
+              sequenceDate: String(seq.sequence_date ?? ''),
+              cta: Boolean(seq.cta),
+              dolor: String(seq.dolor ?? '—'),
+              slidesCount: slides.length,
+            }
+          })
+          .sort((a, b) => b.chats - a.chats)
+
+        if (!cancelled) {
+          setReels(reelItems)
+          setStories(storyItems)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [month])
+
+  if (loading) {
+    return <p className="py-8 text-center text-[13px] text-[var(--text3)]">Cargando historias y reels...</p>
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div>
+        <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text2)]">Historias</h4>
+          <span className="font-mono-num text-[13px] font-bold text-[var(--accent)]">{fN(chatsStories)} chats</span>
+        </div>
+        {stories.length === 0 ? (
+          <p className="py-6 text-center text-[12px] text-[var(--text3)]">Sin secuencias este mes</p>
+        ) : (
+          <div className="max-h-[min(62vh,520px)] space-y-2 overflow-y-auto pr-1">
+            {stories.map(s => (
+              <ContentChatRow
+                key={s.id}
+                thumb={s.thumbnail}
+                title={s.title}
+                chats={s.chats}
+                subtitle={[formatShortDate(s.sequenceDate), s.cta ? 'CTA' : null, s.dolor !== '—' ? s.dolor : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div>
+        <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-[var(--text2)]">Reels</h4>
+          <span className="font-mono-num text-[13px] font-bold text-[var(--accent)]">{fN(chatsReels)} chats</span>
+        </div>
+        {reels.length === 0 ? (
+          <p className="py-6 text-center text-[12px] text-[var(--text3)]">Sin reels este mes</p>
+        ) : (
+          <div className="max-h-[min(62vh,520px)] space-y-2 overflow-y-auto pr-1">
+            {reels.map(r => (
+              <ContentChatRow
+                key={r.id}
+                thumb={r.thumbnail}
+                title={r.title}
+                chats={r.chats}
+                subtitle={[formatShortDate(r.publishedAt), r.keyword !== '—' ? r.keyword : null, r.cta ? 'CTA' : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+type FunnelSetterReportRow = {
+  id: number
+  fecha: string
+  member_nombre: string
+  conversaciones: number
+  agendas: number
+  links_enviados: number
+  notas: string
+}
+
+function FunnelSetterReportsBreakdown({
+  month,
+  metric,
+}: {
+  month: string
+  metric: 'conversaciones' | 'agendas'
+}) {
+  const [rows, setRows] = useState<FunnelSetterReportRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        const range = monthRangeIso(month)
+        if (!range) {
+          if (!cancelled) setRows([])
+          return
+        }
+        const res = await apiFetch(
+          `/team/reports?desde=${encodeURIComponent(range.desde)}&hasta=${encodeURIComponent(range.hasta)}`,
+        )
+        if (!res.ok) {
+          if (!cancelled) setRows([])
+          return
+        }
+        const body = (await res.json().catch(() => ({}))) as { reports?: Record<string, unknown>[] }
+        const setterRows = (Array.isArray(body.reports) ? body.reports : [])
+          .filter(r => r.kind === 'setter')
+          .map(r => ({
+            id: Number(r.id) || 0,
+            fecha: String(r.fecha ?? '').slice(0, 10),
+            member_nombre: String(r.member_nombre ?? '—'),
+            conversaciones: Number(r.conversaciones) || 0,
+            agendas: Number(r.agendas) || 0,
+            links_enviados: Number(r.links_enviados) || 0,
+            notas: String(r.notas ?? '').trim(),
+          }))
+          .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.fecha))
+          .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
+        if (!cancelled) setRows(setterRows)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [month])
+
+  const total = rows.reduce((sum, r) => sum + r[metric], 0)
+  const metricLabel = metric === 'conversaciones' ? 'Conversaciones' : 'Agendas'
+
+  if (loading) {
+    return <p className="py-8 text-center text-[13px] text-[var(--text3)]">Cargando reportes setter...</p>
+  }
+
+  if (rows.length === 0) {
+    return (
+      <p className="py-8 text-center text-[13px] text-[var(--text3)]">
+        No hay reportes setter en este mes.
+      </p>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px]">
+        <thead>
+          <tr className="border-b border-[var(--border)]">
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Fecha</th>
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Setter</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Conversaciones</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Agendas</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Links</th>
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Notas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id} className="border-b border-[var(--border)]">
+              <td className="px-3 py-2.5 font-mono-num text-[12px] text-[var(--text2)]">
+                {formatIsoDateDdMmYyyy(r.fecha)}
+              </td>
+              <td className="px-3 py-2.5 text-[13px] font-medium text-[var(--text)]">{r.member_nombre}</td>
+              <td className={`px-3 py-2.5 text-right font-mono-num text-[13px]${metric === 'conversaciones' ? ' font-semibold text-[var(--accent)]' : ' text-[12px] text-[var(--text2)]'}`}>
+                {fN(r.conversaciones)}
+              </td>
+              <td className={`px-3 py-2.5 text-right font-mono-num text-[13px]${metric === 'agendas' ? ' font-semibold text-[var(--accent)]' : ' text-[12px] text-[var(--text2)]'}`}>
+                {fN(r.agendas)}
+              </td>
+              <td className="px-3 py-2.5 text-right font-mono-num text-[12px] text-[var(--text2)]">
+                {fN(r.links_enviados)}
+              </td>
+              <td className="max-w-[220px] truncate px-3 py-2.5 text-[12px] text-[var(--text3)]" title={r.notas || undefined}>
+                {r.notas || '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-[var(--border2)] bg-[var(--bg3)]">
+            <td colSpan={2} className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+              Total del mes
+            </td>
+            {metric === 'conversaciones' ? (
+              <>
+                <td className="px-3 py-2.5 text-right font-mono-num text-[14px] font-bold text-[var(--accent)]">
+                  {fN(total)}
+                </td>
+                <td colSpan={3} />
+              </>
+            ) : (
+              <>
+                <td />
+                <td className="px-3 py-2.5 text-right font-mono-num text-[14px] font-bold text-[var(--accent)]">
+                  {fN(total)}
+                </td>
+                <td colSpan={2} />
+              </>
+            )}
+          </tr>
+        </tfoot>
+      </table>
+      <p className="mt-4 text-[11px] text-[var(--text3)]">
+        {rows.length} {rows.length === 1 ? 'reporte' : 'reportes'} setter · total {metricLabel.toLowerCase()} = suma diaria del equipo
+      </p>
+    </div>
+  )
+}
+
+type FunnelCloserVentasReportRow = {
+  id: number
+  fecha: string
+  member_nombre: string
+  shows: number
+  cierres: number
+  llamadas_agendadas: number
+  ingreso: number
+  nombre_lead: string
+  notas: string
+}
+
+function FunnelCloserVentasBreakdown({
+  month,
+  metric,
+}: {
+  month: string
+  metric: 'shows' | 'cierres'
+}) {
+  const [rows, setRows] = useState<FunnelCloserVentasReportRow[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        const range = monthRangeIso(month)
+        if (!range) {
+          if (!cancelled) setRows([])
+          return
+        }
+        const res = await apiFetch(
+          `/team/reports?desde=${encodeURIComponent(range.desde)}&hasta=${encodeURIComponent(range.hasta)}`,
+        )
+        if (!res.ok) {
+          if (!cancelled) setRows([])
+          return
+        }
+        const body = (await res.json().catch(() => ({}))) as { reports?: Record<string, unknown>[] }
+        const closerRows = (Array.isArray(body.reports) ? body.reports : [])
+          .filter(
+            r =>
+              r.kind === 'closer' &&
+              String(r.reporte_tipo || 'ventas').toLowerCase() === 'ventas',
+          )
+          .map(r => ({
+            id: Number(r.id) || 0,
+            fecha: String(r.fecha ?? '').slice(0, 10),
+            member_nombre: String(r.member_nombre ?? '—'),
+            shows: Number(r.shows) || 0,
+            cierres: Number(r.cierres) || 0,
+            llamadas_agendadas: Number(r.llamadas_agendadas) || 0,
+            ingreso: Number(r.ingreso) || 0,
+            nombre_lead: String(r.nombre_lead ?? '').trim(),
+            notas: String(r.notas ?? '').trim(),
+          }))
+          .filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.fecha))
+          .sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)
+        if (!cancelled) setRows(closerRows)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [month])
+
+  const total = rows.reduce((sum, r) => sum + r[metric], 0)
+  const metricLabel = metric === 'shows' ? 'Shows' : 'Cierres'
+
+  if (loading) {
+    return <p className="py-8 text-center text-[13px] text-[var(--text3)]">Cargando reportes closer...</p>
+  }
+
+  if (rows.length === 0) {
+    return (
+      <p className="py-8 text-center text-[13px] text-[var(--text3)]">
+        No hay reportes closer (ventas) en este mes.
+      </p>
+    )
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[720px]">
+        <thead>
+          <tr className="border-b border-[var(--border)]">
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Fecha</th>
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Closer</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Shows</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Cierres</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Agendadas</th>
+            <th className="px-3 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Ingreso</th>
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Lead</th>
+            <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Notas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr key={r.id} className="border-b border-[var(--border)]">
+              <td className="px-3 py-2.5 font-mono-num text-[12px] text-[var(--text2)]">
+                {formatIsoDateDdMmYyyy(r.fecha)}
+              </td>
+              <td className="px-3 py-2.5 text-[13px] font-medium text-[var(--text)]">{r.member_nombre}</td>
+              <td className={`px-3 py-2.5 text-right font-mono-num text-[13px]${metric === 'shows' ? ' font-semibold text-[var(--accent)]' : ' text-[12px] text-[var(--text2)]'}`}>
+                {fN(r.shows)}
+              </td>
+              <td className={`px-3 py-2.5 text-right font-mono-num text-[13px]${metric === 'cierres' ? ' font-semibold text-[var(--accent)]' : ' text-[12px] text-[var(--text2)]'}`}>
+                {fN(r.cierres)}
+              </td>
+              <td className="px-3 py-2.5 text-right font-mono-num text-[12px] text-[var(--text2)]">
+                {fN(r.llamadas_agendadas)}
+              </td>
+              <td className="px-3 py-2.5 text-right font-mono-num text-[12px] text-[var(--text2)]">
+                {formatCash(r.ingreso)}
+              </td>
+              <td className="max-w-[140px] truncate px-3 py-2.5 text-[12px] text-[var(--text2)]" title={r.nombre_lead || undefined}>
+                {r.nombre_lead || '—'}
+              </td>
+              <td className="max-w-[180px] truncate px-3 py-2.5 text-[12px] text-[var(--text3)]" title={r.notas || undefined}>
+                {r.notas || '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-[var(--border2)] bg-[var(--bg3)]">
+            <td colSpan={2} className="px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+              Total del mes
+            </td>
+            {metric === 'shows' ? (
+              <>
+                <td className="px-3 py-2.5 text-right font-mono-num text-[14px] font-bold text-[var(--accent)]">
+                  {fN(total)}
+                </td>
+                <td colSpan={5} />
+              </>
+            ) : (
+              <>
+                <td />
+                <td className="px-3 py-2.5 text-right font-mono-num text-[14px] font-bold text-[var(--accent)]">
+                  {fN(total)}
+                </td>
+                <td colSpan={4} />
+              </>
+            )}
+          </tr>
+        </tfoot>
+      </table>
+      <p className="mt-4 text-[11px] text-[var(--text3)]">
+        {rows.length} {rows.length === 1 ? 'reporte' : 'reportes'} closer (ventas) · total {metricLabel.toLowerCase()} = suma diaria del equipo
+      </p>
+    </div>
+  )
+}
+
+function FunnelBreakdownModal({
+  step,
+  open,
+  onClose,
+  month,
+  chatsStories,
+  chatsReels,
+}: {
+  step: FunnelLeadStep | null
+  open: boolean
+  onClose: () => void
+  month: string
+  chatsStories: number
+  chatsReels: number
+}) {
+  if (!step) return null
+
+  const title = `${FUNNEL_STEP_LABELS[step]} — ${month}`
+
+  return (
+    <Modal open={open} onClose={onClose} title={title} maxWidth={step === 'CHATS' ? '1040px' : '920px'}>
+      {step === 'CHATS' ? (
+        <>
+          <FunnelChatsBreakdown month={month} chatsStories={chatsStories} chatsReels={chatsReels} />
+          <p className="mt-4 text-[11px] text-[var(--text3)]">
+            Chats del mes = replies en historias + chats en reels (métricas de contenido).
+          </p>
+        </>
+      ) : step === 'CONVERSACIONES' ? (
+        <>
+          <FunnelSetterReportsBreakdown month={month} metric="conversaciones" />
+          <p className="mt-4 text-[11px] text-[var(--text3)]">
+            Conversaciones del mes = suma de reportes diarios del setter (misma fuente que el embudo).
+          </p>
+        </>
+      ) : step === 'AGENDAS' ? (
+        <>
+          <FunnelSetterReportsBreakdown month={month} metric="agendas" />
+          <p className="mt-4 text-[11px] text-[var(--text3)]">
+            Agendas del mes = suma de reportes diarios del setter (misma fuente que el embudo).
+          </p>
+        </>
+      ) : step === 'SHOWS' ? (
+        <>
+          <FunnelCloserVentasBreakdown month={month} metric="shows" />
+          <p className="mt-4 text-[11px] text-[var(--text3)]">
+            Shows del mes = suma de reportes diarios del closer (ventas), misma fuente que el embudo.
+          </p>
+        </>
+      ) : step === 'CIERRES' ? (
+        <>
+          <FunnelCloserVentasBreakdown month={month} metric="cierres" />
+          <p className="mt-4 text-[11px] text-[var(--text3)]">
+            Cierres del mes = suma de reportes diarios del closer (ventas), misma fuente que el embudo.
+          </p>
+        </>
+      ) : null}
+    </Modal>
+  )
+}
+
+// ── Funnel Component ──
+function VDFunnel({ d, month }: { d: VDData; month: string }) {
+  const [openStep, setOpenStep] = useState<FunnelLeadStep | null>(null)
+
+  const steps: { label: FunnelLeadStep; value: number }[] = [
     { label: 'CHATS', value: d.chats },
     { label: 'CONVERSACIONES', value: d.conversaciones },
     { label: 'AGENDAS', value: d.agendas },
@@ -175,15 +809,21 @@ function VDFunnel({ d }: { d: VDData }) {
   const lastStep = steps.length - 1
 
   return (
+    <>
     <div className="glass-card p-6">
       <div className="mb-4 text-[11px] font-medium uppercase tracking-widest text-[var(--text3)]">Embudo de Ventas</div>
       <div className="flex gap-8">
         {/* Funnel trapezoids */}
         <div className="flex-1 flex flex-col items-center gap-2">
           {steps.map((s, i) => {
-            const segment = funnelSegmentStyle(i, isLight)
+            const segment = funnelSegmentStyle(i)
             return (
-            <div key={s.label} className="relative flex items-center justify-center py-3 transition-all" style={{
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => setOpenStep(s.label)}
+              className="relative flex w-full cursor-pointer items-center justify-center border-0 py-3 transition-all appearance-none hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              style={{
               width: `${widths[i]}%`,
               background: segment.background,
               borderRadius: i === 0 ? '8px 8px 0 0' : i === lastStep ? '0 0 8px 8px' : '0',
@@ -208,7 +848,7 @@ function VDFunnel({ d }: { d: VDData }) {
                   </div>
                 )}
               </div>
-            </div>
+            </button>
             )
           })}
         </div>
@@ -231,11 +871,20 @@ function VDFunnel({ d }: { d: VDData }) {
         </div>
       </div>
     </div>
+    <FunnelBreakdownModal
+      step={openStep}
+      open={openStep !== null}
+      onClose={() => setOpenStep(null)}
+      month={month}
+      chatsStories={d.chatsStories}
+      chatsReels={d.chatsReels}
+    />
+    </>
   )
 }
 
 // ── MENSUAL ──
-function MensualView({ curr, prev, delta }: { curr: VDData; prev: VDData; delta: (k: keyof VDData) => number }) {
+function MensualView({ curr, prev, delta, month }: { curr: VDData; prev: VDData; delta: (k: keyof VDData) => number; month: string }) {
   const chgIngresos = delta('ingresos')
   const progTotal = curr.programas.reduce((s, p) => s + p.ingresos, 0) || 1
   const progColors = ['#F59E0B', '#3B82F6', '#FB923C', '#22C55E', '#A855F7']
@@ -281,7 +930,7 @@ function MensualView({ curr, prev, delta }: { curr: VDData; prev: VDData; delta:
       </div>
 
       {/* Funnel */}
-      <VDFunnel d={curr} />
+      <VDFunnel d={curr} month={month} />
 
       {/* 8 KPIs */}
       <div className="text-[11px] font-medium uppercase tracking-widest text-[var(--text3)]">Metricas del Mes</div>

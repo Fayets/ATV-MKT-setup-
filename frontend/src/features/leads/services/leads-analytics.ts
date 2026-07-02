@@ -44,6 +44,8 @@ export type CashCollectedComposition = {
 }
 
 export type LeadsAnalytics = LeadsFunnel & {
+  chatsStories: number
+  chatsReels: number
   programas: { nombre: string; ventas: number; ingresos: number }[]
   byWeek: WeekMetrics
   byWeekDay: { [K in keyof WeekMetrics]: number[][] } // [4 weeks][7 days]
@@ -59,16 +61,100 @@ export type MemberMetrics = LeadsFunnel & {
 // CORE CALCULATIONS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+export function leadHasAgenda(l: LeadRow): boolean {
+  const ag = l.agendo
+  const hasAgendo = ag != null && String(ag).trim() !== ''
+  return !!(l.scheduled_at || l.call_at || l.call || hasAgendo)
+}
+
+export function leadHasShow(l: LeadRow): boolean {
+  const st = String(l.status ?? '').trim().toLowerCase()
+  return leadHasAgenda(l) && st !== 'no show'
+}
+
+export function leadIsCierre(l: LeadRow): boolean {
+  return String(l.status ?? '').trim().toLowerCase() === 'cerrado'
+}
+
+function textLooksLikeBioTraffic(s: string): boolean {
+  const t = String(s || '').trim().toLowerCase()
+  if (!t) return false
+  if (t === 'bio') return true
+  if (t.includes('información') || t.includes('informacion')) return true
+  if (/\binfo\b/.test(t)) return true
+  if ((t.includes('link') || t.includes('enlace')) && (t.includes('bio') || t.includes('biografía') || t.includes('perfil'))) return true
+  if (t.includes('link en bio') || t.includes('link del perfil') || t.includes('desde perfil')) return true
+  return false
+}
+
+export type LeadChatSource = 'Historias' | 'Reels' | 'Perfil' | 'YouTube' | 'Otros'
+
+export function classifyLeadChatSource(l: LeadRow): LeadChatSource {
+  const url = String(l.content_url || '').toLowerCase()
+  if (url.includes('/reel/') || url.includes('instagram.com/reel')) return 'Reels'
+  const candidates = [
+    l.agenda_point,
+    l.entry_channel,
+    l.entry_funnel,
+    l.keyword,
+    l.origin,
+  ].map(v => String(v || '').trim().toLowerCase())
+  for (const s of candidates) {
+    if (!s) continue
+    if (s.startsWith('story:') || s.includes('historia') || /\bstor(y|ies)\b/.test(s)) return 'Historias'
+    if (s.includes('reel') || /^\d+$/.test(s)) return 'Reels'
+    if (textLooksLikeBioTraffic(s) || s === 'perfil') return 'Perfil'
+    if (s === 'youtube' || s.startsWith('youtube:')) return 'YouTube'
+  }
+  const origin = String(l.origin || '').trim().toLowerCase()
+  if (origin === 'youtube') return 'YouTube'
+  const entryChannel = String(l.entry_channel || '').trim().toLowerCase()
+  if (entryChannel === 'youtube') return 'YouTube'
+  return 'Otros'
+}
+
+export type FunnelLeadStep = 'CHATS' | 'CONVERSACIONES' | 'AGENDAS' | 'SHOWS' | 'CIERRES'
+
+export function filterLeadsForFunnelStep(leads: LeadRow[], step: FunnelLeadStep): LeadRow[] {
+  switch (step) {
+    case 'CHATS':
+    case 'CONVERSACIONES':
+      return leads
+    case 'AGENDAS':
+      return leads.filter(leadHasAgenda)
+    case 'SHOWS':
+      return leads.filter(leadHasShow)
+    case 'CIERRES':
+      return leads.filter(leadIsCierre)
+    default:
+      return leads
+  }
+}
+
+export function sortLeadsForFunnelStep(leads: LeadRow[], step: FunnelLeadStep): LeadRow[] {
+  const ts = (l: LeadRow, keys: string[]) => {
+    for (const k of keys) {
+      const n = Date.parse(String(l[k] ?? ''))
+      if (!Number.isNaN(n)) return n
+    }
+    return 0
+  }
+  const keysByStep: Record<FunnelLeadStep, string[]> = {
+    CHATS: ['fecha_bot', 'date', 'first_contact_at'],
+    CONVERSACIONES: ['fecha_bot', 'date', 'first_contact_at'],
+    AGENDAS: ['agendo', 'scheduled_at', 'call_at', 'call'],
+    SHOWS: ['call', 'scheduled_at', 'call_at', 'agendo'],
+    CIERRES: ['agendo', 'call', 'scheduled_at', 'date'],
+  }
+  const keys = keysByStep[step]
+  return [...leads].sort((a, b) => ts(b, keys) - ts(a, keys))
+}
+
 export function calcFunnel(leads: LeadRow[], conversaciones?: number): LeadsFunnel {
-  const cerrados = leads.filter(l => l.status === 'Cerrado')
-  const agendas = leads.filter(l => {
-    const ag = l.agendo
-    const hasAgendo = ag != null && String(ag).trim() !== ''
-    return !!(l.scheduled_at || l.call_at || hasAgendo)
-  }).length
-  const noShows = leads.filter(l => l.status === 'No show').length
-  const shows = Math.max(0, agendas - noShows)
-  const cierres = cerrados.length
+  const agendas = leads.filter(leadHasAgenda).length
+  const noShows = leads.filter(l => String(l.status ?? '').trim().toLowerCase() === 'no show').length
+  const shows = leads.filter(leadHasShow).length
+  const cierres = leads.filter(leadIsCierre).length
   const ingresos = leads.reduce((s, l) => s + (Number(l.payment) || 0), 0)
   const facturacion = leads.reduce((s, l) => s + (Number(l.revenue) || 0), 0)
   const conv = conversaciones ?? leads.length
@@ -134,7 +220,7 @@ function leadMetricDateIso(l: LeadRow): string | null {
   return null
 }
 
-function monthRangeIso(month: string): { desde: string; hasta: string } | null {
+export function monthRangeIso(month: string): { desde: string; hasta: string } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(month.trim())
   if (!m) return null
   const y = Number(m[1])
