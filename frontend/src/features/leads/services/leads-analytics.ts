@@ -43,9 +43,23 @@ export type CashCollectedComposition = {
   seguimiento: number
 }
 
+/** Cash fijo por reserva declarada en reportes closer ventas. */
+export const RESERVA_CASH_EUR = 300
+
 export type LeadsAnalytics = LeadsFunnel & {
   chatsStories: number
   chatsReels: number
+  conversacionesStories: number
+  conversacionesReels: number
+  agendasStories: number
+  agendasReels: number
+  agendasAds: number
+  showsOrganico: number
+  showsAds: number
+  cierresOrganico: number
+  cierresAds: number
+  reservas: number
+  cashReservas: number
   programas: { nombre: string; ventas: number; ingresos: number }[]
   byWeek: WeekMetrics
   byWeekDay: { [K in keyof WeekMetrics]: number[][] } // [4 weeks][7 days]
@@ -311,6 +325,11 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
               date: fecha,
               conversaciones: Number(r.conversaciones) || 0,
               agendas: Number(r.agendas) || 0,
+              conversaciones_stories: Number(r.conversaciones_stories) || 0,
+              conversaciones_reels: Number(r.conversaciones_reels) || 0,
+              agendas_stories: Number(r.agendas_stories) || 0,
+              agendas_reels: Number(r.agendas_reels) || 0,
+              agendas_ads: Number(r.agendas_ads) || 0,
               shows: 0,
               cierres: 0,
               ingreso: 0,
@@ -322,6 +341,11 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
               agendas: 0,
               shows: Number(r.shows) || 0,
               cierres: Number(r.cierres) || 0,
+              shows_organico: Number(r.shows_organico) || 0,
+              shows_ads: Number(r.shows_ads) || 0,
+              cierres_organico: Number(r.cierres_organico) || 0,
+              cierres_ads: Number(r.cierres_ads) || 0,
+              reservas: Number(r.reservas) || 0,
               ingreso: Number(r.ingreso) || 0,
             })
           }
@@ -355,6 +379,17 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
   const agendas = sumField(setterReports, 'agendas')
   const shows = sumField(closerReports, 'shows')
   const cierres = sumField(closerReports, 'cierres')
+  const conversacionesStories = sumField(setterReports, 'conversaciones_stories')
+  const conversacionesReels = sumField(setterReports, 'conversaciones_reels')
+  const agendasStories = sumField(setterReports, 'agendas_stories')
+  const agendasReels = sumField(setterReports, 'agendas_reels')
+  const agendasAds = sumField(setterReports, 'agendas_ads')
+  const showsOrganico = sumField(closerReports, 'shows_organico')
+  const showsAds = sumField(closerReports, 'shows_ads')
+  const cierresOrganico = sumField(closerReports, 'cierres_organico')
+  const cierresAds = sumField(closerReports, 'cierres_ads')
+  const reservas = sumField(closerReports, 'reservas')
+  const cashReservas = reservas * RESERVA_CASH_EUR
   /** Ingreso declarado en reportes closer (solo fallback facturación si no hay programa en leads). */
   const ingresosReports = sumField(closerReports, 'ingreso')
   const cashFromLeadsPayments = leads.reduce((s, l) => s + (Number(l.payment) || 0), 0)
@@ -536,6 +571,17 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
       ...funnel,
       chatsStories,
       chatsReels,
+      conversacionesStories,
+      conversacionesReels,
+      agendasStories,
+      agendasReels,
+      agendasAds,
+      showsOrganico,
+      showsAds,
+      cierresOrganico,
+      cierresAds,
+      reservas,
+      cashReservas,
       programas,
       byWeek,
       byWeekDay,

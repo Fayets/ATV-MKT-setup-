@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useMonthContext } from '@/shared/components/app-providers'
 import { MonthSelector } from '@/shared/components/month-selector'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
@@ -10,6 +10,7 @@ import { Bar, Line } from '@/shared/components/charts-lazy'
 import {
   getLeadsAnalytics,
   monthRangeIso,
+  RESERVA_CASH_EUR,
   type FunnelLeadStep,
 } from '@/features/leads/services/leads-analytics'
 import type { VDData } from '@/features/sales-dashboard/sales-dashboard-vd'
@@ -120,11 +121,257 @@ export function SalesDashboardPage() {
 }
 
 // ── KPI Component ──
-function VDKpi({ label, value, change, hib = true }: { label: string; value: string; change?: number; hib?: boolean }) {
+type MonthlyMetricId =
+  | 'cash'
+  | 'conversaciones'
+  | 'agendas'
+  | 'noShows'
+  | 'showUpRate'
+  | 'closeRate'
+  | 'tasaAgendamiento'
+  | 'aov'
+  | 'reservas'
+  | 'cashReservas'
+  | 'cashPorAgenda'
+  | 'cashPorShow'
+
+type MetricExplanation = {
+  title: string
+  result: string
+  formula: string
+  data: { label: string; value: string }[]
+  source: string
+}
+
+function getMetricExplanation(id: MonthlyMetricId, d: VDData): MetricExplanation {
+  switch (id) {
+    case 'cash':
+      return {
+        title: 'Cash del mes',
+        result: formatCash(d.ingresos),
+        formula: 'Cash collected = Pagó en leads + seguimiento del mes.',
+        data: [
+          { label: 'Pago (columna Pagó en leads)', value: formatCash(d.cashCollectedComposition.pago) },
+          { label: 'Seguimiento (formularios)', value: formatCash(d.cashCollectedComposition.seguimiento) },
+          { label: 'Total cash del mes', value: formatCash(d.ingresos) },
+        ],
+        source: 'Fuente: leads del mes (/leads) + reportes de seguimiento (/team/seguimiento-reports/month).',
+      }
+    case 'conversaciones':
+      return {
+        title: 'Conversaciones',
+        result: fN(d.conversaciones),
+        formula: 'Suma de conversaciones en reportes diarios del setter del mes.',
+        data: [
+          { label: 'Historias', value: fN(d.conversacionesStories) },
+          { label: 'Reels', value: fN(d.conversacionesReels) },
+          { label: 'Total conversaciones', value: fN(d.conversaciones) },
+        ],
+        source: 'Fuente: reportes setter (/team/reports) — campo conversaciones (Historias + Reels).',
+      }
+    case 'agendas':
+      return {
+        title: 'Agendas',
+        result: fN(d.agendas),
+        formula: 'Suma de agendas en reportes diarios del setter del mes.',
+        data: [
+          { label: 'Historias', value: fN(d.agendasStories) },
+          { label: 'Reels', value: fN(d.agendasReels) },
+          { label: 'Ads', value: fN(d.agendasAds) },
+          { label: 'Total agendas', value: fN(d.agendas) },
+        ],
+        source: 'Fuente: reportes setter (/team/reports) — llamadas agendadas por canal.',
+      }
+    case 'noShows':
+      return {
+        title: 'No Shows',
+        result: fN(d.noShows),
+        formula: 'max(0, Agendas − Shows). Agendas del setter menos shows del closer.',
+        data: [
+          { label: 'Agendas (setter)', value: fN(d.agendas) },
+          { label: 'Shows (closer ventas)', value: fN(d.shows) },
+          { label: 'No shows', value: fN(d.noShows) },
+        ],
+        source: 'Fuente: agendas en reportes setter y shows en reportes closer ventas del mes.',
+      }
+    case 'showUpRate':
+      return {
+        title: 'Show Up Rate',
+        result: fP(d.showUpRate),
+        formula: '(Shows ÷ Agendas) × 100',
+        data: [
+          { label: 'Shows', value: fN(d.shows) },
+          { label: 'Agendas', value: fN(d.agendas) },
+          { label: 'Show up rate', value: fP(d.showUpRate) },
+        ],
+        source: 'Fuente: shows (closer ventas) y agendas (setter) del mes.',
+      }
+    case 'closeRate':
+      return {
+        title: 'Close Rate',
+        result: fP(d.closeRate),
+        formula: '(Cierres ÷ Shows) × 100',
+        data: [
+          { label: 'Cierres', value: fN(d.cierres) },
+          { label: 'Shows', value: fN(d.shows) },
+          { label: 'Close rate', value: fP(d.closeRate) },
+        ],
+        source: 'Fuente: cierres y shows en reportes closer ventas del mes.',
+      }
+    case 'tasaAgendamiento':
+      return {
+        title: 'T. Agendamiento',
+        result: fP(d.tasaAgendamiento),
+        formula: '(Agendas ÷ Conversaciones) × 100',
+        data: [
+          { label: 'Agendas', value: fN(d.agendas) },
+          { label: 'Conversaciones', value: fN(d.conversaciones) },
+          { label: 'Tasa de agendamiento', value: fP(d.tasaAgendamiento) },
+        ],
+        source: 'Fuente: reportes setter del mes (agendas y conversaciones).',
+      }
+    case 'aov':
+      return {
+        title: 'AOV',
+        result: formatCash(d.aov),
+        formula:
+          d.cierres > 0
+            ? 'Facturación del mes ÷ Cierres del mes.'
+            : 'Sin cierres en el mes: AOV = 0.',
+        data: [
+          { label: 'Facturación', value: formatCash(d.facturacion) },
+          { label: 'Cierres', value: fN(d.cierres) },
+          { label: 'AOV', value: formatCash(d.aov) },
+        ],
+        source:
+          'Fuente: facturación desde leads (Prog. comprado) o ingreso en reportes closer; cierres en reportes closer ventas.',
+      }
+    case 'reservas':
+      return {
+        title: 'Reservas',
+        result: fN(d.reservas),
+        formula: 'Suma de reservas declaradas en reportes diarios closer (ventas) del mes.',
+        data: [
+          { label: 'Reservas del mes', value: fN(d.reservas) },
+          { label: 'Valor unitario', value: formatCash(RESERVA_CASH_EUR) },
+        ],
+        source: 'Fuente: campo reservas en reportes closer ventas (/team/reports).',
+      }
+    case 'cashReservas':
+      return {
+        title: 'Cash collected reservas',
+        result: formatCash(d.cashReservas),
+        formula: `Reservas × ${formatCash(RESERVA_CASH_EUR)} (cada reserva = ${formatCash(RESERVA_CASH_EUR)}).`,
+        data: [
+          { label: 'Reservas', value: fN(d.reservas) },
+          { label: 'Cash por reserva', value: formatCash(RESERVA_CASH_EUR) },
+          { label: 'Cash collected reservas', value: formatCash(d.cashReservas) },
+        ],
+        source: 'Fuente: calculado automáticamente desde reservas en reportes closer ventas.',
+      }
+    case 'cashPorAgenda':
+      return {
+        title: 'Cash / Agenda',
+        result: formatCash(d.cashPorAgenda),
+        formula: d.agendas > 0 ? 'Cash collected del mes ÷ Agendas del mes.' : 'Sin agendas: Cash/Agenda = 0.',
+        data: [
+          { label: 'Cash collected', value: formatCash(d.ingresos) },
+          { label: 'Agendas', value: fN(d.agendas) },
+          { label: 'Cash / agenda', value: formatCash(d.cashPorAgenda) },
+        ],
+        source: 'Fuente: cash (Pagó + seguimiento) y agendas (reportes setter).',
+      }
+    case 'cashPorShow':
+      return {
+        title: 'Cash / Show',
+        result: formatCash(d.cashPorShow),
+        formula: d.shows > 0 ? 'Cash collected del mes ÷ Shows del mes.' : 'Sin shows: Cash/Show = 0.',
+        data: [
+          { label: 'Cash collected', value: formatCash(d.ingresos) },
+          { label: 'Shows', value: fN(d.shows) },
+          { label: 'Cash / show', value: formatCash(d.cashPorShow) },
+        ],
+        source: 'Fuente: cash (Pagó + seguimiento) y shows (reportes closer ventas).',
+      }
+    default:
+      return {
+        title: 'Métrica',
+        result: '—',
+        formula: '',
+        data: [],
+        source: '',
+      }
+  }
+}
+
+function MetricExplainModal({
+  metric,
+  d,
+  open,
+  onClose,
+}: {
+  metric: MonthlyMetricId | null
+  d: VDData
+  open: boolean
+  onClose: () => void
+}) {
+  if (!metric) return null
+  const info = getMetricExplanation(metric, d)
+  return (
+    <Modal open={open} onClose={onClose} title={info.title} maxWidth="520px" compact>
+      <div className="space-y-4 text-[13px] text-[var(--text)]">
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+            Resultado del mes
+          </div>
+          <div className="font-mono-num text-2xl font-bold">{info.result}</div>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+            Cómo se calcula
+          </div>
+          <p className="leading-snug text-[var(--text2)]">{info.formula}</p>
+        </div>
+        <div>
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+            Datos usados
+          </div>
+          <dl className="space-y-2 rounded-lg border border-[var(--border)] bg-[var(--bg3)]/50 p-3">
+            {info.data.map((row) => (
+              <div key={row.label} className="flex items-baseline justify-between gap-4">
+                <dt className="text-[12px] text-[var(--text2)]">{row.label}</dt>
+                <dd className="font-mono-num shrink-0 text-[13px] font-semibold">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <p className="text-[11px] leading-snug text-[var(--text3)]">{info.source}</p>
+      </div>
+    </Modal>
+  )
+}
+
+function VDKpi({
+  label,
+  value,
+  change,
+  hib = true,
+  onClick,
+}: {
+  label: string
+  value: string
+  change?: number
+  hib?: boolean
+  onClick?: () => void
+}) {
   const clr = change === undefined || change === 0 ? 'var(--text3)' : (hib ? change > 0 : change < 0) ? 'var(--green)' : 'var(--text2)'
   const arrow = change !== undefined ? (change > 0 ? '▲' : change < 0 ? '▼' : '─') : ''
   return (
-    <div className="glass-card p-5">
+    <button
+      type="button"
+      onClick={onClick}
+      className="glass-card w-full p-5 text-left transition-all hover:border-[var(--accent)] hover:brightness-[1.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+    >
       <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text2)] mb-2">{label}</div>
       <div className="font-mono-num text-[28px] font-bold tracking-tight">{value}</div>
       {change !== undefined && (
@@ -132,7 +379,7 @@ function VDKpi({ label, value, change, hib = true }: { label: string; value: str
           {arrow} {Math.abs(change).toFixed(1)}%<span className="text-[var(--text3)] font-normal ml-1">vs mes ant.</span>
         </div>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -163,6 +410,69 @@ const FUNNEL_STEP_LABELS: Record<FunnelLeadStep, string> = {
   AGENDAS: 'Agendas',
   SHOWS: 'Shows',
   CIERRES: 'Cierres',
+}
+
+function funnelStepBreakdown(
+  step: FunnelLeadStep,
+  d: VDData,
+): { label: string; value: number }[] {
+  switch (step) {
+    case 'CHATS':
+      return [
+        { label: 'Historias', value: d.chatsStories },
+        { label: 'Reels', value: d.chatsReels },
+      ]
+    case 'CONVERSACIONES':
+      return [
+        { label: 'Historias', value: d.conversacionesStories },
+        { label: 'Reels', value: d.conversacionesReels },
+      ]
+    case 'AGENDAS':
+      return [
+        { label: 'Historias', value: d.agendasStories },
+        { label: 'Reels', value: d.agendasReels },
+        { label: 'Ads', value: d.agendasAds },
+      ]
+    case 'SHOWS':
+      return [
+        { label: 'Orgánico', value: d.showsOrganico },
+        { label: 'Ads', value: d.showsAds },
+      ]
+    case 'CIERRES':
+      return [
+        { label: 'Orgánico', value: d.cierresOrganico },
+        { label: 'Ads', value: d.cierresAds },
+      ]
+    default:
+      return []
+  }
+}
+
+function FunnelMiniBreakdown({
+  items,
+  labelColor,
+  valueColor,
+}: {
+  items: { label: string; value: number }[]
+  labelColor: string
+  valueColor: string
+}) {
+  if (items.length === 0) return null
+  return (
+    <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-[9px]" style={{ color: labelColor }}>
+      {items.map((item, i) => (
+        <Fragment key={item.label}>
+          {i > 0 && <span aria-hidden="true">·</span>}
+          <span>
+            {item.label}{' '}
+            <span className="font-mono-num" style={{ color: valueColor }}>
+              {fN(item.value)}
+            </span>
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  )
 }
 
 type FunnelReelItem = {
@@ -840,13 +1150,11 @@ function VDFunnel({ d, month }: { d: VDData; month: string }) {
                 <div className="font-mono-num text-[22px] font-bold" style={{ color: segment.valueColor }}>
                   {s.value}
                 </div>
-                {s.label === 'CHATS' && (
-                  <div className="mt-1 flex items-center justify-center gap-2 text-[9px]" style={{ color: segment.labelColor }}>
-                    <span>Historias <span className="font-mono-num" style={{ color: segment.valueColor }}>{fN(d.chatsStories)}</span></span>
-                    <span aria-hidden="true">·</span>
-                    <span>Reels <span className="font-mono-num" style={{ color: segment.valueColor }}>{fN(d.chatsReels)}</span></span>
-                  </div>
-                )}
+                <FunnelMiniBreakdown
+                  items={funnelStepBreakdown(s.label, d)}
+                  labelColor={segment.labelColor}
+                  valueColor={segment.valueColor}
+                />
               </div>
             </button>
             )
@@ -885,6 +1193,7 @@ function VDFunnel({ d, month }: { d: VDData; month: string }) {
 
 // ── MENSUAL ──
 function MensualView({ curr, prev, delta, month }: { curr: VDData; prev: VDData; delta: (k: keyof VDData) => number; month: string }) {
+  const [openMetric, setOpenMetric] = useState<MonthlyMetricId | null>(null)
   const chgIngresos = delta('ingresos')
   const progTotal = curr.programas.reduce((s, p) => s + p.ingresos, 0) || 1
   const progColors = ['#F59E0B', '#3B82F6', '#FB923C', '#22C55E', '#A855F7']
@@ -925,25 +1234,37 @@ function MensualView({ curr, prev, delta, month }: { curr: VDData; prev: VDData;
           <div className={`text-[13px] font-semibold ${chgIngresos >= 0 ? 'text-[var(--green)]' : 'text-[var(--text2)]'}`}>
             {chgIngresos >= 0 ? '▲' : '▼'} {Math.abs(chgIngresos).toFixed(1)}% vs mes ant.
           </div>
-          <div className="text-[11px] text-[var(--text3)] mt-1">Ticket prom: {formatCash(curr.ticketPromedio)}</div>
         </div>
       </div>
 
       {/* Funnel */}
       <VDFunnel d={curr} month={month} />
 
-      {/* 8 KPIs */}
+      {/* KPIs del mes */}
       <div className="text-[11px] font-medium uppercase tracking-widest text-[var(--text3)]">Metricas del Mes</div>
       <div className="grid grid-cols-4 gap-3">
-        <VDKpi label="Cash del mes" value={formatCash(curr.ingresos)} change={delta('ingresos')} />
-        <VDKpi label="Conversaciones" value={fN(curr.conversaciones)} change={delta('conversaciones')} />
-        <VDKpi label="Agendas" value={fN(curr.agendas)} change={delta('agendas')} />
-        <VDKpi label="No Shows" value={fN(curr.noShows)} change={delta('noShows')} hib={false} />
-        <VDKpi label="Show Up Rate" value={fP(curr.showUpRate)} change={delta('showUpRate')} />
-        <VDKpi label="Close Rate" value={fP(curr.closeRate)} change={delta('closeRate')} />
-        <VDKpi label="T. Agendamiento" value={fP(curr.tasaAgendamiento)} change={delta('tasaAgendamiento')} />
-        <VDKpi label="AOV" value={formatCash(curr.aov)} change={delta('aov')} />
+        <VDKpi label="Cash del mes" value={formatCash(curr.ingresos)} change={delta('ingresos')} onClick={() => setOpenMetric('cash')} />
+        <VDKpi label="Conversaciones" value={fN(curr.conversaciones)} change={delta('conversaciones')} onClick={() => setOpenMetric('conversaciones')} />
+        <VDKpi label="Agendas" value={fN(curr.agendas)} change={delta('agendas')} onClick={() => setOpenMetric('agendas')} />
+        <VDKpi label="No Shows" value={fN(curr.noShows)} change={delta('noShows')} hib={false} onClick={() => setOpenMetric('noShows')} />
+        <VDKpi label="Show Up Rate" value={fP(curr.showUpRate)} change={delta('showUpRate')} onClick={() => setOpenMetric('showUpRate')} />
+        <VDKpi label="Close Rate" value={fP(curr.closeRate)} change={delta('closeRate')} onClick={() => setOpenMetric('closeRate')} />
+        <VDKpi label="T. Agendamiento" value={fP(curr.tasaAgendamiento)} change={delta('tasaAgendamiento')} onClick={() => setOpenMetric('tasaAgendamiento')} />
+        <VDKpi label="AOV" value={formatCash(curr.aov)} change={delta('aov')} onClick={() => setOpenMetric('aov')} />
+        <VDKpi label="Reservas" value={fN(curr.reservas)} change={delta('reservas')} onClick={() => setOpenMetric('reservas')} />
+        <VDKpi
+          label="Cash collected reservas"
+          value={formatCash(curr.cashReservas)}
+          change={delta('cashReservas')}
+          onClick={() => setOpenMetric('cashReservas')}
+        />
       </div>
+      <MetricExplainModal
+        metric={openMetric}
+        d={curr}
+        open={openMetric !== null}
+        onClose={() => setOpenMetric(null)}
+      />
 
       {/* Programas */}
       {curr.programas.length > 0 && (
@@ -984,6 +1305,7 @@ function MensualView({ curr, prev, delta, month }: { curr: VDData; prev: VDData;
 
       {/* Comparaciones table */}
       <div className="text-[11px] font-medium uppercase tracking-widest text-[var(--text3)]">Comparaciones</div>
+      <p className="mb-2 text-[11px] text-[var(--text3)]">Tocá una fila para ver cómo se calcula la métrica.</p>
       <div className="glass-card overflow-hidden">
         <table className="w-full">
           <thead>
@@ -995,26 +1317,33 @@ function MensualView({ curr, prev, delta, month }: { curr: VDData; prev: VDData;
             </tr>
           </thead>
           <tbody>
-            {([
-              ['Conversaciones', fN(prev.conversaciones), fN(curr.conversaciones), delta('conversaciones')],
-              ['Agendas', fN(prev.agendas), fN(curr.agendas), delta('agendas')],
-              ['No Shows', fN(prev.noShows), fN(curr.noShows), delta('noShows')],
-              ['Show Up Rate', fP(prev.showUpRate), fP(curr.showUpRate), delta('showUpRate')],
-              ['T. Agendamiento', fP(prev.tasaAgendamiento), fP(curr.tasaAgendamiento), delta('tasaAgendamiento')],
-              ['Close Rate', fP(prev.closeRate), fP(curr.closeRate), delta('closeRate')],
-              ['Cash/Agenda', formatCash(prev.cashPorAgenda), formatCash(curr.cashPorAgenda), delta('cashPorAgenda')],
-              ['Cash/Show', formatCash(prev.cashPorShow), formatCash(curr.cashPorShow), delta('cashPorShow')],
-              ['Ticket Promedio', formatCash(prev.ticketPromedio), formatCash(curr.ticketPromedio), delta('ticketPromedio')],
-              ['AOV', formatCash(prev.aov), formatCash(curr.aov), delta('aov')],
-              ['Ingresos', formatCash(prev.ingresos), formatCash(curr.ingresos), delta('ingresos')],
-            ] as [string, string, string, number][]).map(([label, pv, cv, chg]) => (
-              <tr key={label} className="border-b border-[var(--border)]">
-                <td className="px-5 py-2.5 text-[13px] font-medium">{label}</td>
-                <td className="px-5 py-2.5 font-mono-num text-[13px] text-[var(--text2)]">{pv}</td>
-                <td className="px-5 py-2.5 font-mono-num text-[13px]">{cv}</td>
+            {(
+              [
+                { label: 'Cash del mes', metricId: 'cash' as const, pv: formatCash(prev.ingresos), cv: formatCash(curr.ingresos), chg: delta('ingresos') },
+                { label: 'Conversaciones', metricId: 'conversaciones' as const, pv: fN(prev.conversaciones), cv: fN(curr.conversaciones), chg: delta('conversaciones') },
+                { label: 'Agendas', metricId: 'agendas' as const, pv: fN(prev.agendas), cv: fN(curr.agendas), chg: delta('agendas') },
+                { label: 'No Shows', metricId: 'noShows' as const, pv: fN(prev.noShows), cv: fN(curr.noShows), chg: delta('noShows') },
+                { label: 'Show Up Rate', metricId: 'showUpRate' as const, pv: fP(prev.showUpRate), cv: fP(curr.showUpRate), chg: delta('showUpRate') },
+                { label: 'Close Rate', metricId: 'closeRate' as const, pv: fP(prev.closeRate), cv: fP(curr.closeRate), chg: delta('closeRate') },
+                { label: 'T. Agendamiento', metricId: 'tasaAgendamiento' as const, pv: fP(prev.tasaAgendamiento), cv: fP(curr.tasaAgendamiento), chg: delta('tasaAgendamiento') },
+                { label: 'AOV', metricId: 'aov' as const, pv: formatCash(prev.aov), cv: formatCash(curr.aov), chg: delta('aov') },
+                { label: 'Reservas', metricId: 'reservas' as const, pv: fN(prev.reservas), cv: fN(curr.reservas), chg: delta('reservas') },
+                { label: 'Cash collected reservas', metricId: 'cashReservas' as const, pv: formatCash(prev.cashReservas), cv: formatCash(curr.cashReservas), chg: delta('cashReservas') },
+                { label: 'Cash/Agenda', metricId: 'cashPorAgenda' as const, pv: formatCash(prev.cashPorAgenda), cv: formatCash(curr.cashPorAgenda), chg: delta('cashPorAgenda') },
+                { label: 'Cash/Show', metricId: 'cashPorShow' as const, pv: formatCash(prev.cashPorShow), cv: formatCash(curr.cashPorShow), chg: delta('cashPorShow') },
+              ] satisfies { label: string; metricId: MonthlyMetricId; pv: string; cv: string; chg: number }[]
+            ).map((row) => (
+              <tr
+                key={row.label}
+                onClick={() => setOpenMetric(row.metricId)}
+                className="cursor-pointer border-b border-[var(--border)] transition-colors hover:bg-[var(--nav-hover)]"
+              >
+                <td className="px-5 py-2.5 text-[13px] font-medium">{row.label}</td>
+                <td className="px-5 py-2.5 font-mono-num text-[13px] text-[var(--text2)]">{row.pv}</td>
+                <td className="px-5 py-2.5 font-mono-num text-[13px]">{row.cv}</td>
                 <td className="px-5 py-2.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chg >= 0 ? 'bg-[rgba(34,197,94,0.15)] text-[var(--green)]' : 'bg-[var(--accent-faint)] text-[var(--text2)]'}`}>
-                    {chg >= 0 ? '+' : ''}{chg.toFixed(1)}%
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.chg >= 0 ? 'bg-[rgba(34,197,94,0.15)] text-[var(--green)]' : 'bg-[var(--accent-faint)] text-[var(--text2)]'}`}>
+                    {row.chg >= 0 ? '+' : ''}{row.chg.toFixed(1)}%
                   </span>
                 </td>
               </tr>

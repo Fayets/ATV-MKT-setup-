@@ -20,6 +20,13 @@ type ReportRow =
       conversaciones: number
       agendas: number
       links_enviados: number
+      conversaciones_stories: number
+      conversaciones_reels: number
+      agendas_stories: number
+      agendas_reels: number
+      agendas_ads: number
+      links_enviados_stories: number
+      links_enviados_reels: number
       notas: string
       sentimiento_trafico: string
       avatar_tipo_agendas: string
@@ -43,6 +50,13 @@ type ReportRow =
       llamadas_agendadas: number
       shows: number
       cierres: number
+      shows_organico: number
+      shows_ads: number
+      cierres_organico: number
+      cierres_ads: number
+      reservas: number
+      seguimiento: number
+      facturacion: number
       calificados: number
       descalificados: number
       ingreso: number
@@ -128,15 +142,98 @@ function reportListTitle(r: ReportRow): string {
   return `REPORTE CLOSER ${tipo} - ${fd} - ${r.member_nombre}`
 }
 
+function SetterMetricRow({
+  title,
+  conversaciones,
+  calendlys,
+  agendas,
+}: {
+  title: string
+  conversaciones: number
+  calendlys: number
+  agendas: number
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+        {title}
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-[12px]">
+        <div>
+          <dt className="font-bold text-[var(--text)]">Conv. reales</dt>
+          <dd className="font-mono-num text-[var(--text)]">{conversaciones}</dd>
+        </div>
+        <div>
+          <dt className="font-bold text-[var(--text)]">Calendlys enviados</dt>
+          <dd className="font-mono-num text-[var(--text)]">{calendlys}</dd>
+        </div>
+        <div>
+          <dt className="font-bold text-[var(--text)]">Llamadas agendadas</dt>
+          <dd className="font-mono-num text-[var(--text)]">{agendas}</dd>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SetterConversacionesDetail({
+  r,
+}: {
+  r: Extract<ReportRow, { kind: 'setter' }>
+}) {
+  const conversacionesStories = Number(r.conversaciones_stories) || 0
+  const conversacionesReels = Number(r.conversaciones_reels) || 0
+  const linksStories = Number(r.links_enviados_stories) || 0
+  const linksReels = Number(r.links_enviados_reels) || 0
+  const agendasStories = Number(r.agendas_stories) || 0
+  const agendasReels = Number(r.agendas_reels) || 0
+  const agendasAds = Number(r.agendas_ads) || 0
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 text-[12px] font-semibold text-[var(--text)]">Conversaciones</div>
+        <div className="space-y-4">
+          <SetterMetricRow
+            title="Historias"
+            conversaciones={conversacionesStories}
+            calendlys={linksStories}
+            agendas={agendasStories}
+          />
+          <SetterMetricRow
+            title="Reels"
+            conversaciones={conversacionesReels}
+            calendlys={linksReels}
+            agendas={agendasReels}
+          />
+          <div>
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+              Ads
+            </div>
+            <div className="text-[12px]">
+              <dt className="font-bold text-[var(--text)]">Llamadas agendadas</dt>
+              <dd className="font-mono-num text-[var(--text)]">{agendasAds}</dd>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="text-[11px] text-[var(--text3)]">
+        Totales del día:{' '}
+        <span className="font-mono-num text-[var(--text2)]">
+          {Number(r.conversaciones) || 0} conv. · {Number(r.agendas) || 0} agendas ·{' '}
+          {Number(r.links_enviados) || 0} calendlys
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function ReportDetail({ r }: { r: ReportRow }) {
   if (r.kind === 'setter') {
     return (
-      <dl className="grid gap-1 text-[12px] text-[var(--text)] sm:grid-cols-2">
+      <dl className="grid gap-4 text-[12px] text-[var(--text)]">
         <div className="sm:col-span-2">
-          <dt className="font-bold text-[var(--text)]">Resumen</dt>
-          <dd className="font-mono-num text-[var(--text)]">
-            Conv. {r.conversaciones} · Agendas {r.agendas} · Links {r.links_enviados}
-          </dd>
+          <SetterConversacionesDetail r={r} />
         </div>
         {r.notas ? (
           <div className="sm:col-span-2">
@@ -226,18 +323,10 @@ function ReportDetail({ r }: { r: ReportRow }) {
     )
   }
   return (
-    <dl className="grid gap-1 text-[12px] text-[var(--text)] sm:grid-cols-3">
+    <dl className="grid gap-3 text-[12px] text-[var(--text)] sm:grid-cols-3">
       <div>
         <dt className="font-bold text-[var(--text)]">Agendadas</dt>
         <dd className="font-mono-num text-[var(--text)]">{r.llamadas_agendadas}</dd>
-      </div>
-      <div>
-        <dt className="font-bold text-[var(--text)]">Shows</dt>
-        <dd className="font-mono-num text-[var(--text)]">{r.shows}</dd>
-      </div>
-      <div>
-        <dt className="font-bold text-[var(--text)]">Cierres</dt>
-        <dd className="font-mono-num text-[var(--text)]">{r.cierres}</dd>
       </div>
       <div>
         <dt className="font-bold text-[var(--text)]">Calif. / Desc.</dt>
@@ -246,8 +335,43 @@ function ReportDetail({ r }: { r: ReportRow }) {
         </dd>
       </div>
       <div>
+        <dt className="font-bold text-[var(--text)]">Leads en seguimiento (de las llamadas de hoy)</dt>
+        <dd className="font-mono-num text-[var(--text)]">{r.seguimiento}</dd>
+      </div>
+      <div className="sm:col-span-3">
+        <dt className="mb-1 font-bold text-[var(--text)]">Shows</dt>
+        <dd className="font-mono-num text-[var(--text)]">
+          {Number(r.shows) || 0}
+          <span className="ml-2 text-[11px] font-normal text-[var(--text3)]">
+            Orgánico {Number(r.shows_organico) || 0} · Ads {Number(r.shows_ads) || 0}
+          </span>
+        </dd>
+      </div>
+      <div className="sm:col-span-3">
+        <dt className="mb-1 font-bold text-[var(--text)]">Cierres</dt>
+        <dd className="font-mono-num text-[var(--text)]">
+          {Number(r.cierres) || 0}
+          <span className="ml-2 text-[11px] font-normal text-[var(--text3)]">
+            Orgánico {Number(r.cierres_organico) || 0} · Ads {Number(r.cierres_ads) || 0}
+          </span>
+        </dd>
+      </div>
+      <div>
         <dt className="font-bold text-[var(--text)]">Ingreso</dt>
-        <dd className="font-mono-num text-[var(--text)]">{formatCash(r.ingreso)}</dd>
+        <dd className="font-mono-num text-[var(--text)]">{formatCash(Number(r.ingreso) || 0)}</dd>
+      </div>
+      <div>
+        <dt className="font-bold text-[var(--text)]">Facturación</dt>
+        <dd className="font-mono-num text-[var(--text)]">{formatCash(Number(r.facturacion) || 0)}</dd>
+      </div>
+      <div>
+        <dt className="font-bold text-[var(--text)]">Reservas</dt>
+        <dd className="font-mono-num text-[var(--text)]">
+          {Number(r.reservas) || 0}
+          <span className="ml-1 text-[11px] font-normal text-[var(--text3)]">
+            ({formatCash((Number(r.reservas) || 0) * 300)})
+          </span>
+        </dd>
       </div>
       {r.notas ? (
         <div className="sm:col-span-3">

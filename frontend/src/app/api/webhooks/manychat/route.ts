@@ -1,34 +1,28 @@
 import { NextResponse } from 'next/server'
+import { getBackendInternalUrl } from '@/shared/lib/backend-internal-url'
 
-/** POST /api/webhooks/manychat — eventos ManyChat (validación básica; lógica de negocio en backend si aplica). */
+/** POST /api/webhooks/manychat — proxy al backend FastAPI (lógica real). */
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-    }
+    const body = await request.text()
+    const url = new URL(request.url)
+    const target = `${getBackendInternalUrl()}/webhooks/manychat${url.search}`
 
-    const payload = body as Record<string, unknown>
-    const queryToken = new URL(request.url).searchParams.get('token')?.trim() || ''
-    const headerToken = String(request.headers.get('X-Webhook-Token') || '').trim()
-    const bodyToken = String(payload.webhook_token || '').trim()
-    const webhookToken = queryToken || headerToken || bodyToken
-    if (webhookToken) payload.webhook_token = webhookToken
+    const headers = new Headers()
+    const contentType = request.headers.get('content-type')
+    if (contentType) headers.set('content-type', contentType)
+    const webhookToken = request.headers.get('X-Webhook-Token')
+    if (webhookToken) headers.set('X-Webhook-Token', webhookToken)
 
-    const event = String(payload.event || '').trim().toLowerCase()
-    let keyword = String(payload.keyword || '').trim()
-    if (!keyword && event === 'respondio_auto') {
-      keyword = 'respondio_auto'
+    const res = await fetch(target, { method: 'POST', headers, body })
+    const text = await res.text()
+    let data: unknown = text
+    try {
+      data = text ? JSON.parse(text) : {}
+    } catch {
+      data = { detail: text }
     }
-
-    if (!webhookToken) {
-      return NextResponse.json({ error: 'Missing webhook_token' }, { status: 401 })
-    }
-    if (!keyword) {
-      return NextResponse.json({ error: 'Missing keyword' }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true, chat_id: null })
+    return NextResponse.json(data, { status: res.status })
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }

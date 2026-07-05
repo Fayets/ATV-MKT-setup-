@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useAuthUser } from '@/shared/hooks/use-auth-user'
 import { useToast } from '@/shared/components/toast'
 import { formatCash } from '@/shared/lib/format-utils'
@@ -31,6 +31,20 @@ type DailyReport = {
   sentimiento_trafico: string
   avatar_tipo_agendas: string
   insights_marketing: string
+  conversaciones_stories: number
+  conversaciones_reels: number
+  agendas_stories: number
+  agendas_reels: number
+  agendas_ads: number
+  links_enviados_stories: number
+  links_enviados_reels: number
+  shows_organico: number
+  shows_ads: number
+  cierres_organico: number
+  cierres_ads: number
+  reservas: number
+  seguimiento: number
+  facturacion: number
 }
 
 const CLOSER_ESTADOS_FINAL = [
@@ -56,7 +70,30 @@ type Props = {
 
 type CloserKind = 'ventas' | 'marketing'
 
-type NumKey = 'conversaciones' | 'agendas' | 'calendly_links' | 'calls_scheduled' | 'shows' | 'cierres' | 'calificados' | 'descalificados' | 'ingreso'
+type NumKey =
+  | 'conversaciones'
+  | 'agendas'
+  | 'calendly_links'
+  | 'calls_scheduled'
+  | 'shows'
+  | 'cierres'
+  | 'calificados'
+  | 'descalificados'
+  | 'ingreso'
+  | 'conversaciones_stories'
+  | 'conversaciones_reels'
+  | 'agendas_stories'
+  | 'agendas_reels'
+  | 'agendas_ads'
+  | 'links_enviados_stories'
+  | 'links_enviados_reels'
+  | 'shows_organico'
+  | 'shows_ads'
+  | 'cierres_organico'
+  | 'cierres_ads'
+  | 'reservas'
+  | 'seguimiento'
+  | 'facturacion'
 
 function errMessage(data: unknown): string {
   if (data && typeof data === 'object' && 'detail' in data) {
@@ -109,6 +146,20 @@ export function DailyReportSection({ role }: Props) {
     sentimiento_trafico: '',
     avatar_tipo_agendas: '',
     insights_marketing: '',
+    conversaciones_stories: 0,
+    conversaciones_reels: 0,
+    agendas_stories: 0,
+    agendas_reels: 0,
+    agendas_ads: 0,
+    links_enviados_stories: 0,
+    links_enviados_reels: 0,
+    shows_organico: 0,
+    shows_ads: 0,
+    cierres_organico: 0,
+    cierres_ads: 0,
+    reservas: 0,
+    seguimiento: 0,
+    facturacion: 0,
   })
 
   const fetchMembers = useCallback(async () => {
@@ -185,6 +236,13 @@ export function DailyReportSection({ role }: Props) {
       calificados: 0,
       descalificados: 0,
       ingreso: 0,
+      reservas: 0,
+      seguimiento: 0,
+      facturacion: 0,
+      shows_organico: 0,
+      shows_ads: 0,
+      cierres_organico: 0,
+      cierres_ads: 0,
       notes: '',
       nombreLead: '',
       estadoFinalLlamada: '',
@@ -209,14 +267,24 @@ export function DailyReportSection({ role }: Props) {
     setShowForm(true)
   }
 
+  const numInputClass =
+    'w-full min-w-0 rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-3 py-2 !text-left text-[13px] text-[var(--text)] outline-none focus:border-[var(--text3)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+  const fieldLabelClass = 'text-[11px] font-medium leading-snug text-[var(--text2)]'
+
   const numField = (
     key: NumKey,
-    label: string,
+    label: React.ReactNode,
     isCurrency = false,
-    labelClass = 'text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]',
+    labelClass = fieldLabelClass,
+    hint?: React.ReactNode,
+    labelMinHeight = '',
   ) => (
-    <div>
-      <label className={`mb-1.5 block leading-snug ${labelClass}`}>{label}</label>
+    <div className="flex min-w-0 flex-col">
+      <label
+        className={`mb-1.5 flex items-end leading-snug ${labelMinHeight} ${labelClass}`}
+      >
+        {label}
+      </label>
       <input
         type="number"
         value={form[key]}
@@ -227,8 +295,42 @@ export function DailyReportSection({ role }: Props) {
           }))
         }
         placeholder="0"
-        className="w-full rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-3 py-2 text-[13px] text-[var(--text)] outline-none focus:border-[var(--text3)]"
+        className={numInputClass}
       />
+      {hint}
+    </div>
+  )
+
+  const setterConversacionesRow = (
+    fields: { key: NumKey; label: string }[],
+  ) => (
+    <div className="grid grid-cols-3 gap-3">
+      {fields.map(({ key, label }) => (
+        <Fragment key={key}>
+          {numField(key, label, false, fieldLabelClass, undefined, 'min-h-[2.75rem]')}
+        </Fragment>
+      ))}
+    </div>
+  )
+
+  const setterConversacionesTotal =
+    form.conversaciones_stories + form.conversaciones_reels
+  const setterAgendasTotal =
+    form.agendas_stories + form.agendas_reels + form.agendas_ads
+  const closerShowsTotal = form.shows_organico + form.shows_ads
+  const closerCierresTotal = form.cierres_organico + form.cierres_ads
+
+  const closerVentasBreakdownBlock = (
+    title: string,
+    subs: { key: NumKey; label: string }[],
+  ) => (
+    <div className="min-w-0 rounded-lg border border-[var(--border)] bg-[var(--bg3)]/40 p-3">
+      <div className="mb-3 text-[12px] font-semibold text-[var(--text)]">{title}</div>
+      <div className="grid grid-cols-2 gap-3">
+        {subs.map(({ key, label }) => (
+          <Fragment key={key}>{numField(key, label)}</Fragment>
+        ))}
+      </div>
     </div>
   )
 
@@ -262,15 +364,25 @@ export function DailyReportSection({ role }: Props) {
     setSaving(true)
     try {
       if (role === 'setter') {
+        const conversaciones = form.conversaciones_stories + form.conversaciones_reels
+        const agendas = form.agendas_stories + form.agendas_reels + form.agendas_ads
+        const links_enviados = form.links_enviados_stories + form.links_enviados_reels
         const res = await apiFetch('/team/setter-reports', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             member_id: form.memberId,
             fecha: form.date,
-            conversaciones: form.conversaciones,
-            agendas: form.agendas,
-            links_enviados: form.calendly_links,
+            conversaciones,
+            agendas,
+            links_enviados,
+            conversaciones_stories: form.conversaciones_stories,
+            conversaciones_reels: form.conversaciones_reels,
+            agendas_stories: form.agendas_stories,
+            agendas_reels: form.agendas_reels,
+            agendas_ads: form.agendas_ads,
+            links_enviados_stories: form.links_enviados_stories,
+            links_enviados_reels: form.links_enviados_reels,
             notas: null,
             sentimiento_trafico: form.sentimiento_trafico.trim() || null,
             avatar_tipo_agendas: form.avatar_tipo_agendas.trim() || null,
@@ -323,11 +435,18 @@ export function DailyReportSection({ role }: Props) {
                   fecha: form.date,
                   reporte_tipo: 'ventas',
                   llamadas_agendadas: form.calls_scheduled,
-                  shows: form.shows,
-                  cierres: form.cierres,
+                  shows: form.shows_organico + form.shows_ads,
+                  cierres: form.cierres_organico + form.cierres_ads,
                   calificados: form.calificados,
                   descalificados: form.descalificados,
                   ingreso: form.ingreso,
+                  shows_organico: form.shows_organico,
+                  shows_ads: form.shows_ads,
+                  cierres_organico: form.cierres_organico,
+                  cierres_ads: form.cierres_ads,
+                  reservas: form.reservas,
+                  seguimiento: form.seguimiento,
+                  facturacion: form.facturacion,
                   notas: form.notes.trim() || null,
                 },
           ),
@@ -503,15 +622,33 @@ export function DailyReportSection({ role }: Props) {
 
           {role === 'setter' ? (
             <>
-              <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {numField(
-                  'conversaciones',
-                  'Conversaciones generadas en el día de hoy',
-                  false,
-                  'text-[11px] font-medium leading-snug text-[var(--text2)]',
-                )}
-                {numField('agendas', 'Total de agendas hoy', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('calendly_links', 'Links de Calendly enviados', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
+              <div className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--bg3)]/40 p-4">
+                <h3 className="mb-4 text-[12px] font-semibold text-[var(--text)]">Conversaciones</h3>
+                <div className="space-y-5">
+                  <div>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+                      Historias
+                    </div>
+                    {setterConversacionesRow([
+                      { key: 'conversaciones_stories', label: 'Conversaciones reales' },
+                      { key: 'links_enviados_stories', label: 'Calendlys enviados' },
+                      { key: 'agendas_stories', label: 'Llamadas agendadas' },
+                    ])}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+                      Reels
+                    </div>
+                    {setterConversacionesRow([
+                      { key: 'conversaciones_reels', label: 'Convers reales' },
+                      { key: 'links_enviados_reels', label: 'Calendlys enviados' },
+                      { key: 'agendas_reels', label: 'Llamadas agendadas' },
+                    ])}
+                  </div>
+                  <div className="border-t border-[var(--border)] pt-4">
+                    {numField('agendas_ads', 'Llamadas agendadas (Ads)')}
+                  </div>
+                </div>
               </div>
               <div className="mb-4 space-y-4">
                 {textareaField(
@@ -536,13 +673,36 @@ export function DailyReportSection({ role }: Props) {
             </>
           ) : closerKind === 'ventas' ? (
             <>
-              <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                {numField('calls_scheduled', 'Llamadas agendadas', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('shows', 'Shows (presentadas)', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('cierres', 'Cierres', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('calificados', 'Calificados', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('descalificados', 'Descalificados', false, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
-                {numField('ingreso', 'Ingreso ($)', true, 'text-[11px] font-medium leading-snug text-[var(--text2)]')}
+              <div className="mb-4 space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {numField('calls_scheduled', 'Llamadas agendadas')}
+                  {numField('calificados', 'Calificados')}
+                  {numField('descalificados', 'Descalificados')}
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {closerVentasBreakdownBlock('Shows (presentadas)', [
+                    { key: 'shows_organico', label: 'Orgánico' },
+                    { key: 'shows_ads', label: 'Ads' },
+                  ])}
+                  {closerVentasBreakdownBlock('Cierres', [
+                    { key: 'cierres_organico', label: 'Orgánico' },
+                    { key: 'cierres_ads', label: 'Ads' },
+                  ])}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {numField('ingreso', 'Ingreso / Cash Collected (€)', true)}
+                  {numField('facturacion', 'Facturación (€)', true)}
+                  {numField(
+                    'reservas',
+                    'Reservas (€300 c/u)',
+                    false,
+                    fieldLabelClass,
+                    <div className="mt-1.5 text-[11px] text-[var(--text3)]">
+                      Cash reservas: €{(form.reservas * 300).toLocaleString('es')}
+                    </div>,
+                  )}
+                </div>
+                {numField('seguimiento', 'Leads en seguimiento (de las llamadas de hoy)')}
               </div>
               <div className="mb-4">
                 <label className="mb-1.5 block text-[11px] font-medium leading-snug text-[var(--text2)]">
@@ -662,27 +822,29 @@ export function DailyReportSection({ role }: Props) {
             </div>
           )}
 
-          {role === 'setter' && form.conversaciones > 0 && (
+          {role === 'setter' && setterConversacionesTotal > 0 && (
             <div className="mb-4 flex gap-6 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3">
               <div className="text-[11px]">
                 <span className="text-[var(--text3)]">Tasa agend.:</span>{' '}
                 <span className="font-semibold text-[var(--accent)]">
-                  {form.conversaciones > 0 ? ((form.agendas / form.conversaciones) * 100).toFixed(1) : 0}%
+                  {((setterAgendasTotal / setterConversacionesTotal) * 100).toFixed(1)}%
                 </span>
               </div>
             </div>
           )}
-          {role === 'closer' && closerKind === 'ventas' && form.shows > 0 && (
+          {role === 'closer' && closerKind === 'ventas' && closerShowsTotal > 0 && (
             <div className="mb-4 flex gap-6 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-3">
               <div className="text-[11px]">
                 <span className="text-[var(--text3)]">Close Rate:</span>{' '}
                 <span className="font-semibold text-[var(--accent)]">
-                  {form.shows > 0 ? ((form.cierres / form.shows) * 100).toFixed(1) : 0}%
+                  {((closerCierresTotal / closerShowsTotal) * 100).toFixed(1)}%
                 </span>
               </div>
               <div className="text-[11px]">
                 <span className="text-[var(--text3)]">Ticket prom:</span>{' '}
-                <span className="font-semibold text-[var(--green)]">{form.cierres > 0 ? formatCash(form.ingreso / form.cierres) : formatCash(0)}</span>
+                <span className="font-semibold text-[var(--green)]">
+                  {closerCierresTotal > 0 ? formatCash(form.ingreso / closerCierresTotal) : formatCash(0)}
+                </span>
               </div>
             </div>
           )}

@@ -15,6 +15,10 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: '/webhooks/:path*',
+        destination: `${backendInternal}/webhooks/:path*`,
+      },
+      {
         source: '/api-backend/:path*',
         destination: `${backendInternal}/:path*`,
       },

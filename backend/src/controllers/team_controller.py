@@ -117,6 +117,13 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "conversaciones": r.conversaciones,
                     "agendas": r.agendas,
                     "links_enviados": r.links_enviados,
+                    "conversaciones_stories": r.conversaciones_stories,
+                    "conversaciones_reels": r.conversaciones_reels,
+                    "agendas_stories": r.agendas_stories,
+                    "agendas_reels": r.agendas_reels,
+                    "agendas_ads": r.agendas_ads,
+                    "links_enviados_stories": r.links_enviados_stories,
+                    "links_enviados_reels": r.links_enviados_reels,
                     "notas": r.notas or "",
                     "sentimiento_trafico": r.sentimiento_trafico or "",
                     "avatar_tipo_agendas": r.avatar_tipo_agendas or "",
@@ -135,9 +142,16 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "llamadas_agendadas": r.llamadas_agendadas,
                     "shows": r.shows,
                     "cierres": r.cierres,
+                    "shows_organico": r.shows_organico,
+                    "shows_ads": r.shows_ads,
+                    "cierres_organico": r.cierres_organico,
+                    "cierres_ads": r.cierres_ads,
                     "calificados": r.calificados,
                     "descalificados": r.descalificados,
                     "ingreso": float(r.ingreso),
+                    "reservas": r.reservas,
+                    "seguimiento": r.seguimiento,
+                    "facturacion": float(r.facturacion),
                     "notas": r.notas or "",
                     "nombre_lead": getattr(r, "nombre_lead", None) or "",
                     "estado_final_llamada": getattr(r, "estado_final_llamada", None) or "",
@@ -222,6 +236,13 @@ class SetterReportBody(BaseModel):
     conversaciones: int = 0
     agendas: int = 0
     links_enviados: int = 0
+    conversaciones_stories: int = 0
+    conversaciones_reels: int = 0
+    agendas_stories: int = 0
+    agendas_reels: int = 0
+    agendas_ads: int = 0
+    links_enviados_stories: int = 0
+    links_enviados_reels: int = 0
     notas: str | None = None
     sentimiento_trafico: str | None = None
     avatar_tipo_agendas: str | None = None
@@ -235,6 +256,13 @@ class CloserReportBody(BaseModel):
     llamadas_agendadas: int = 0
     shows: int = 0
     cierres: int = 0
+    shows_organico: int = 0
+    shows_ads: int = 0
+    cierres_organico: int = 0
+    cierres_ads: int = 0
+    reservas: int = 0
+    seguimiento: int = 0
+    facturacion: float = 0
     calificados: int = 0
     descalificados: int = 0
     ingreso: float = 0
@@ -457,6 +485,13 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             r.conversaciones = body.conversaciones
             r.agendas = body.agendas
             r.links_enviados = body.links_enviados
+            r.conversaciones_stories = body.conversaciones_stories
+            r.conversaciones_reels = body.conversaciones_reels
+            r.agendas_stories = body.agendas_stories
+            r.agendas_reels = body.agendas_reels
+            r.agendas_ads = body.agendas_ads
+            r.links_enviados_stories = body.links_enviados_stories
+            r.links_enviados_reels = body.links_enviados_reels
             r.notas = _notas_str(body.notas)
             r.sentimiento_trafico = _notas_str(body.sentimiento_trafico)
             r.avatar_tipo_agendas = _notas_str(body.avatar_tipo_agendas)
@@ -469,6 +504,13 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             conversaciones=body.conversaciones,
             agendas=body.agendas,
             links_enviados=body.links_enviados,
+            conversaciones_stories=body.conversaciones_stories,
+            conversaciones_reels=body.conversaciones_reels,
+            agendas_stories=body.agendas_stories,
+            agendas_reels=body.agendas_reels,
+            agendas_ads=body.agendas_ads,
+            links_enviados_stories=body.links_enviados_stories,
+            links_enviados_reels=body.links_enviados_reels,
             notas=_notas_str(body.notas),
             sentimiento_trafico=_notas_str(body.sentimiento_trafico),
             avatar_tipo_agendas=_notas_str(body.avatar_tipo_agendas),
@@ -490,6 +532,16 @@ def save_closer_report(body: CloserReportBody, user_id: str = Depends(require_us
     cal = body.calificados
     desc = body.descalificados
     ing = body.ingreso
+    shows_org = body.shows_organico
+    shows_ads = body.shows_ads
+    cierres_org = body.cierres_organico
+    cierres_ads = body.cierres_ads
+    if tipo == "ventas":
+        sh = shows_org + shows_ads
+        ci = cierres_org + cierres_ads
+    reservas = body.reservas
+    seguimiento = body.seguimiento
+    facturacion = body.facturacion
     nombre_l = _notas_str(body.nombre_lead)
     estado_f = _notas_str(body.estado_final_llamada)
     perfil = _notas_str(body.perfil_lead)
@@ -509,6 +561,8 @@ def save_closer_report(body: CloserReportBody, user_id: str = Depends(require_us
             raise HTTPException(status_code=400, detail="Seleccioná el perfil del lead.")
         la = sh = ci = cal = desc = 0
         ing = 0.0
+        shows_org = shows_ads = cierres_org = cierres_ads = reservas = seguimiento = 0
+        facturacion = 0.0
     else:
         nombre_l = estado_f = perfil = objecion = dolores = razon = ins_mkt = ""
     with db_session:
@@ -546,6 +600,13 @@ def save_closer_report(body: CloserReportBody, user_id: str = Depends(require_us
             r.llamadas_agendadas = la
             r.shows = sh
             r.cierres = ci
+            r.shows_organico = shows_org
+            r.shows_ads = shows_ads
+            r.cierres_organico = cierres_org
+            r.cierres_ads = cierres_ads
+            r.reservas = reservas
+            r.seguimiento = seguimiento
+            r.facturacion = facturacion
             r.calificados = cal
             r.descalificados = desc
             r.ingreso = ing
@@ -566,6 +627,13 @@ def save_closer_report(body: CloserReportBody, user_id: str = Depends(require_us
             llamadas_agendadas=la,
             shows=sh,
             cierres=ci,
+            shows_organico=shows_org,
+            shows_ads=shows_ads,
+            cierres_organico=cierres_org,
+            cierres_ads=cierres_ads,
+            reservas=reservas,
+            seguimiento=seguimiento,
+            facturacion=facturacion,
             calificados=cal,
             descalificados=desc,
             ingreso=ing,

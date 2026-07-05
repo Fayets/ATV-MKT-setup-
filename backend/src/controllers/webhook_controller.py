@@ -73,6 +73,82 @@ LIMIT 1"""
             return None
 
 
+def _payload_respondio_auto_flag(payload: dict) -> bool:
+    event = str(payload.get("event") or "").strip().lower()
+    if event == "respondio_auto":
+        return True
+    raw = payload.get("respondio_auto")
+    if raw is True:
+        return True
+    if isinstance(raw, (int, float)) and raw == 1:
+        return True
+    if isinstance(raw, str) and raw.strip().lower() in ("true", "1", "yes", "si", "sí"):
+        return True
+    return False
+
+
+def _resolve_user_id_for_respondio_auto(payload: dict) -> int | None:
+    keyword = str(payload.get("keyword") or "").strip()
+    if keyword:
+        try:
+            return _resolve_user_id_by_keyword(keyword)
+        except HTTPException:
+            pass
+    with db_session:
+        manychat_conns = list(ApiConnection.select(lambda c: c.platform == "manychat"))
+        manychat_conns.sort(key=lambda c: int(c.id))
+        if manychat_conns:
+            return int(manychat_conns[0].user_id)
+    return None
+
+
+def _mark_respondio_auto(payload: dict) -> bool:
+    """Marca respondio_auto=True en el lead del contacto. Devuelve si encontró lead."""
+    ig_key = _norm_ig(str(payload.get("contact_ig_username") or "").strip())
+    mc_id = _sanitize_webhook_display_name(str(payload.get("manychat_contact_id") or ""))
+    user_id = _resolve_user_id_for_respondio_auto(payload)
+
+    with db_session:
+        lead: Lead | None = None
+        tbl = Lead._table_ or "lead"
+
+        if user_id is not None and ig_key:
+            sql = f"""l.id FROM {tbl} l
+WHERE l.user_id = $user_id
+AND lower(trim(both from coalesce(l.ig, ''))) = $ig_key
+ORDER BY l.created_at DESC
+LIMIT 1"""
+            rows = db.select(sql, globals(), {"user_id": user_id, "ig_key": ig_key})
+            if rows:
+                try:
+                    lead = Lead.get(id=int(rows[0]), user_id=user_id)
+                except ObjectNotFound:
+                    lead = None
+
+        if lead is None and user_id is not None and mc_id:
+            for row in rows_for_user(Lead, user_id):
+                if str(row.manychat_contact_id or "").strip() == mc_id:
+                    lead = row
+                    break
+
+        if lead is None and ig_key:
+            sql = f"""l.id FROM {tbl} l
+WHERE lower(trim(both from coalesce(l.ig, ''))) = $ig_key
+ORDER BY l.created_at DESC
+LIMIT 1"""
+            rows = db.select(sql, globals(), {"ig_key": ig_key})
+            if rows:
+                try:
+                    lead = Lead.get(id=int(rows[0]))
+                except ObjectNotFound:
+                    lead = None
+
+        if lead is None:
+            return False
+        lead.respondio_auto = True
+        return True
+
+
 def _resolve_user_id_by_keyword(keyword: str) -> int | None:
     """Dueño del keyword: reel con ese keyword; si no hay reel, primer ApiConnection manychat."""
     kw = _norm_kw(keyword)
@@ -118,34 +194,19 @@ async def manychat_webhook(request: Request) -> dict[str, str]:
     if resolved_token:
         payload["webhook_token"] = resolved_token
 
-    event = str(payload.get("event") or "").strip().lower()
     webhook_token = str(payload.get("webhook_token") or "").strip()
 
     if str(webhook_token) != str(MANYCHAT_WEBHOOK_SECRET).strip():
         raise HTTPException(status_code=401, detail="Invalid webhook token")
 
-    if event == "respondio_auto":
-        ig_key = _norm_ig(str(payload.get("contact_ig_username") or "").strip())
-        if not ig_key:
-            return {"status": "ok"}
-        with db_session:
-            tbl = Lead._table_ or "lead"
-            sql = f"""l.id FROM {tbl} l
-WHERE lower(trim(both from coalesce(l.ig, ''))) = $ig_key
-ORDER BY l.created_at DESC
-LIMIT 1"""
-            rows = db.select(sql, globals(), {"ig_key": ig_key})
-            if not rows:
-                return {"status": "ok"}
-            try:
-                lead = Lead.get(id=int(rows[0]))
-            except ObjectNotFound:
-                return {"status": "ok"}
-            lead.respondio_auto = True
-        return {"status": "ok"}
+    respondio_requested = _payload_respondio_auto_flag(payload)
+    if respondio_requested:
+        _mark_respondio_auto(payload)
 
     keyword = str(payload.get("keyword") or "").strip()
     if not keyword:
+        if respondio_requested:
+            return {"status": "ok"}
         raise HTTPException(status_code=400, detail="Missing keyword")
 
     user_id = _resolve_user_id_by_keyword(keyword)
@@ -179,6 +240,8 @@ LIMIT 1"""
             if manychat_contact_id and not (existing.manychat_contact_id or "").strip():
                 existing.manychat_contact_id = manychat_contact_id
             existing.fecha_bot = now
+            if respondio_requested:
+                existing.respondio_auto = True
         else:
             Lead(
                 user_id=user_id,

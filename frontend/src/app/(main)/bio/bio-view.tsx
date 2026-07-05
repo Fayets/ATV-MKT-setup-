@@ -287,7 +287,7 @@ export default function BioPage() {
       ) : (
         <div className="space-y-2">
           <div className="hidden gap-x-5 gap-y-2 px-4 py-2 lg:grid lg:grid-cols-[minmax(11rem,2fr)_minmax(5rem,1fr)_minmax(5rem,1fr)_8rem_4.5rem_8rem_72px]">
-            {(['Instagram', 'Keyword', 'Respondió bio', 'Programa'] as const).map((h) => (
+            {(['Instagram', 'Keyword', 'Respondió auto', 'Programa'] as const).map((h) => (
               <div
                 key={h}
                 className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]"
@@ -318,10 +318,10 @@ export default function BioPage() {
                 </div>
                 <div
                   className="flex min-h-[1.25rem] items-center gap-2 lg:justify-start"
-                  title={lead.respondio_auto ? 'Respondió la automatización de la bio' : 'No respondió la automatización de la bio'}
+                  title={lead.respondio_auto === true ? 'Respondió la automatización' : 'No respondió la automatización'}
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)] lg:hidden">Respondió bio</span>
-                  {lead.respondio_auto ? (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)] lg:hidden">Respondió auto</span>
+                  {lead.respondio_auto === true ? (
                     <span
                       className="text-lg font-semibold leading-none text-[var(--green)]"
                       aria-hidden
@@ -333,7 +333,7 @@ export default function BioPage() {
                       ·
                     </span>
                   )}
-                  <span className="sr-only">{lead.respondio_auto ? 'Respondió bio' : 'No respondió bio'}</span>
+                  <span className="sr-only">{lead.respondio_auto === true ? 'Respondió auto' : 'No respondió auto'}</span>
                 </div>
                 <div className="min-w-0 text-[12px] text-[var(--text2)] truncate">
                   <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)] lg:hidden">Programa</span>
@@ -391,7 +391,7 @@ export default function BioPage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <div><span className="text-[var(--text3)]">Respondió bio:</span> {lead.respondio_auto ? 'Sí' : 'No'}</div>
+                        <div><span className="text-[var(--text3)]">Respondió auto:</span> {lead.respondio_auto === true ? 'Sí' : 'No'}</div>
                         <div><span className="text-[var(--text3)]">Programa:</span> {lead.programa || '—'}</div>
                         <div><span className="text-[var(--text3)]">Pagó:</span> {formatCash(Number(lead.pago || 0))}</div>
                         <div><span className="text-[var(--text3)]">Fecha agendó:</span> {formatFechaAgendoDisplay(lead.fecha_agendo)}</div>

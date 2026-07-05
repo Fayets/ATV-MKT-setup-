@@ -150,7 +150,7 @@ def _lead_to_response(row: LeadEntity) -> BioLeadResponse:
         razon_compra=row.razon_compra,
         notas=row.notas,
         manychat_chat_url=row.content_url,
-        respondio_auto=bool(row.respondio_auto),
+        respondio_auto=row.respondio_auto is True,
         content_url=row.content_url,
         manychat_contact_id=row.manychat_contact_id,
         programa_ofrecido=prog,
