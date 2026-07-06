@@ -256,10 +256,6 @@ def _apply_appointment_to_lead(
 
     # Crear nuevo lead con todos los campos requeridos
     notas_parts: list[str] = []
-    if email:
-        notas_parts.append(f"GHL email: {email}")
-    if phone:
-        notas_parts.append(f"GHL phone: {phone}")
     if ghl_contact_id:
         notas_parts.append(f"GHL contact_id: {ghl_contact_id}")
 
