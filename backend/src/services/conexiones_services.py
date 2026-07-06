@@ -55,9 +55,16 @@ class ConexionesServices:
                 if platform.lower() == "instagram":
                     previous_token = str(previous_credentials.get("access_token") or "").strip()
                     incoming_token = str(incoming_credentials.get("access_token") or "").strip()
+                    if not incoming_token and previous_token:
+                        incoming_credentials["access_token"] = previous_token
+                        incoming_token = previous_token
                     if incoming_token and incoming_token != previous_token:
                         incoming_credentials["token_saved_at"] = self._iso_utc(now)
                         incoming_credentials["token_expires_at"] = self._iso_utc(now + timedelta(days=60))
+                    elif incoming_token and incoming_token == previous_token:
+                        for key in ("token_saved_at", "token_expires_at"):
+                            if key not in incoming_credentials and key in previous_credentials:
+                                incoming_credentials[key] = previous_credentials[key]
                 existing.credentials = incoming_credentials
                 existing.updated_at = now
                 return self._to_response(existing)

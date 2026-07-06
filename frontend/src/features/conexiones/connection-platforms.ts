@@ -37,6 +37,27 @@ const PLATFORMS: ConnectionPlatform[] = [
     },
   },
   {
+    key: 'ghl',
+    label: 'Go High Level',
+    icon: '📆',
+    subtitle: 'Sincronizá appointments del calendario como leads',
+    fields: [
+      { key: 'access_token', label: 'Private Integration Token', placeholder: 'pit-...', type: 'password' },
+      { key: 'location_id', label: 'Location ID', placeholder: 'tt2MHSab9ZgEYLPCBKE6' },
+      { key: 'calendar_id', label: 'Calendar ID', placeholder: '343pcyvrOZuhFN2H8CKY' },
+    ],
+    guide: {
+      title: 'Cómo configurar Go High Level',
+      steps: [
+        'En GHL → Settings → Private Integrations, creá un token con acceso a Contacts y Calendars',
+        'Pegá el Private Integration Token en el campo correspondiente',
+        'Copiá el Location ID desde Settings → Business Profile',
+        'Copiá el Calendar ID del calendario cuyas citas querés importar',
+        'Guardá la conexión y usá «Sincronizar» para importar appointments',
+      ],
+    },
+  },
+  {
     key: 'manychat',
     label: 'ManyChat',
     icon: '💬',
@@ -66,9 +87,11 @@ const PLATFORMS: ConnectionPlatform[] = [
     guide: {
       title: 'Cómo configurar Instagram',
       steps: [
-        'Conectá tu app en Meta for Developers',
-        'Generá un Access Token con permisos para stories e insights',
-        'Pegá token e Instagram User ID y guardá',
+        'Conectá tu app en Meta for Developers (app activa, no eliminada)',
+        'Generá un Access Token con: instagram_basic, instagram_manage_insights, pages_show_list, pages_read_engagement',
+        'La cuenta Instagram debe ser Profesional (Business/Creator) vinculada a una página de Facebook',
+        'Pegá token e Instagram User ID (el ID numérico de la cuenta business, suele empezar con 1784…)',
+        'Usá «Probar conexión» antes de sincronizar historias',
       ],
     },
   },
@@ -93,7 +116,7 @@ const PLATFORMS: ConnectionPlatform[] = [
 ]
 
 const SETUP_ORDER = ['instagram', 'manychat', 'calendly', 'youtube'] as const
-const APP_ORDER = ['calendly', 'manychat', 'instagram', 'youtube'] as const
+const APP_ORDER = ['calendly', 'ghl', 'manychat', 'instagram', 'youtube'] as const
 
 function pick(order: readonly string[]): ConnectionPlatform[] {
   const map = new Map(PLATFORMS.map((p) => [p.key, p]))

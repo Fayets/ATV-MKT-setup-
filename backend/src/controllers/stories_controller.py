@@ -141,6 +141,18 @@ def get_metrics(
         raise HTTPException(status_code=500, detail="Error inesperado al obtener métricas de historias.")
 
 
+@router.get("/connection-test")
+def test_instagram_connection(
+    user_id: Annotated[str, Depends(get_current_user)],
+) -> dict[str, Any]:
+    try:
+        return service.test_instagram_connection(user_id)
+    except HTTPException as e:
+        raise e
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error inesperado al probar la conexión de Instagram.")
+
+
 @router.post("/sync")
 async def sync_stories(
     user_id: Annotated[str, Depends(get_current_user)],

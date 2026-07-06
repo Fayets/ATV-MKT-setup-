@@ -584,11 +584,17 @@ export default function HistoriasPage() {
   const conCTA = metrics.secuencias_con_cta
   const sinCTA = metrics.secuencias_sin_cta
   const tokenExpiresAt = syncStatus?.token_expires_at ? new Date(syncStatus.token_expires_at) : null
-  const tokenDaysLeft = tokenExpiresAt ? Math.max(0, Math.floor((tokenExpiresAt.getTime() - Date.now()) / 86400000)) : 59
+  const tokenDaysLeft = tokenExpiresAt
+    ? Math.max(0, Math.floor((tokenExpiresAt.getTime() - Date.now()) / 86400000))
+    : null
   const tokenStatusColor =
-    tokenDaysLeft < 5 ? 'text-[var(--amber)]'
-      : tokenDaysLeft <= 10 ? 'text-[var(--amber)]'
-        : 'text-[var(--green)]'
+    tokenDaysLeft === null
+      ? 'text-[var(--text3)]'
+      : tokenDaysLeft < 5
+        ? 'text-[var(--amber)]'
+        : tokenDaysLeft <= 10
+          ? 'text-[var(--amber)]'
+          : 'text-[var(--green)]'
 
   if (!ready || loading) return <div className="py-12 text-center text-[var(--text3)]">Cargando...</div>
 
@@ -659,8 +665,11 @@ export default function HistoriasPage() {
             )}
           </div>
           <div className={`mt-1 flex items-center gap-2 ${tokenStatusColor}`}>
-            {tokenDaysLeft <= 10 && <span aria-hidden="true">⚠️</span>}
-            <span>Token Instagram: {tokenDaysLeft} días restantes</span>
+            {tokenDaysLeft !== null && tokenDaysLeft <= 10 && <span aria-hidden="true">⚠️</span>}
+            <span>
+              Token Instagram:{' '}
+              {tokenDaysLeft !== null ? `${tokenDaysLeft} días restantes` : 'fecha de vencimiento desconocida'}
+            </span>
           </div>
         </div>
       )}

@@ -77,6 +77,12 @@ function ConnectionCardInner({
     options: calendlySyncMonthOptions,
     label: calendlySyncMonthLabel,
   } = useMonth()
+  const {
+    month: ghlSyncMonth,
+    setMonth: setGhlSyncMonth,
+    options: ghlSyncMonthOptions,
+    label: ghlSyncMonthLabel,
+  } = useMonth()
 
   const isConnected =
     !platform.infoOnly && connection && Object.values(connection.credentials).some((v) => v?.trim())
@@ -137,8 +143,14 @@ function ConnectionCardInner({
     async (creds: Record<string, string>) => {
       setStatus('loading')
       setErrorMsg('')
-      const payload =
+      let payload =
         platform.key === 'calendly' ? calendlyCredentialsOnly(creds) : { ...creds }
+      if (platform.key === 'instagram' && connection?.credentials) {
+        const prev = connection.credentials
+        if (!String(payload.access_token || '').trim() && prev.access_token?.trim()) {
+          payload = { ...payload, access_token: prev.access_token }
+        }
+      }
       try {
         await onSave(payload)
         setStatus('success')
@@ -148,7 +160,7 @@ function ConnectionCardInner({
         setErrorMsg(e instanceof Error ? e.message : 'Error al guardar')
       }
     },
-    [onSave, platform.key],
+    [onSave, platform.key, connection?.credentials],
   )
 
   const syncCalendly = useCallback(async () => {
@@ -205,6 +217,112 @@ function ConnectionCardInner({
     platform.key,
   ])
 
+  const syncGhl = useCallback(async () => {
+    if (platform.key !== 'ghl') return
+    const token = (form.access_token || connection?.credentials?.access_token || '').trim()
+    if (!token) {
+      setSyncStatus('Guardá el Private Integration Token antes de sincronizar.')
+      return
+    }
+    setSyncing(true)
+    setSyncStatus('Sincronizando…')
+    try {
+      const url = `${resolveBackendBase(apiBase)}/ghl/sync?month=${encodeURIComponent(ghlSyncMonth)}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: backendAuthHeaders({ 'Content-Type': 'application/json' }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        detail?: string | { msg?: string }[]
+        error?: string
+        synced?: number
+        created?: number
+        updated?: number
+        month?: string | null
+      }
+      if (!res.ok) {
+        const d = data.error ?? data.detail
+        const msg =
+          typeof d === 'string' ? d : Array.isArray(d) ? JSON.stringify(d) : 'Error al sincronizar'
+        setSyncStatus(`Error: ${msg}`)
+        return
+      }
+      const monthLabel =
+        data.month && typeof data.month === 'string'
+          ? ghlSyncMonthOptions.find((o) => o.value === data.month)?.label ?? ghlSyncMonthLabel
+          : ghlSyncMonthLabel
+      setSyncStatus(
+        `${monthLabel}: ${data.created ?? 0} leads creados, ${data.updated ?? 0} actualizados.`,
+      )
+      await onSyncComplete?.()
+    } catch (e) {
+      setSyncStatus(e instanceof Error ? e.message : 'Error al sincronizar')
+    } finally {
+      setSyncing(false)
+    }
+  }, [
+    apiBase,
+    ghlSyncMonth,
+    ghlSyncMonthLabel,
+    ghlSyncMonthOptions,
+    connection?.credentials?.access_token,
+    form.access_token,
+    onSyncComplete,
+    platform.key,
+  ])
+
+  const testInstagramConnection = useCallback(async () => {
+    if (platform.key !== 'instagram') return
+    setSyncing(true)
+    setSyncStatus('Probando conexión…')
+    try {
+      const res = await fetch(`${resolveBackendBase(apiBase)}/api/stories/connection-test`, {
+        headers: backendAuthHeaders(),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        detail?: string | { msg?: string }[]
+        steps?: { step: string; ok: boolean; detail: string }[]
+      }
+      if (!res.ok) {
+        const d = data.detail
+        const msg =
+          typeof d === 'string' ? d : Array.isArray(d) ? JSON.stringify(d) : 'Error al probar conexión'
+        setSyncStatus(`Error: ${msg}`)
+        return
+      }
+      if (data.ok) {
+        const storiesStep = data.steps?.find((s) => s.step === 'stories')
+        setSyncStatus(storiesStep?.detail || 'Conexión OK — podés sincronizar historias.')
+      } else {
+        const failed = data.steps?.find((s) => !s.ok)
+        setSyncStatus(`Error: ${failed?.detail || 'No se pudo acceder a historias.'}`)
+      }
+    } catch (e) {
+      setSyncStatus(e instanceof Error ? e.message : 'Error al probar conexión')
+    } finally {
+      setSyncing(false)
+    }
+  }, [apiBase, platform.key])
+
+  const instagramTestBlock =
+    platform.key === 'instagram' && !isSetup ? (
+      <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
+        <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+          Probar acceso a historias
+        </div>
+        <button
+          type="button"
+          disabled={syncing}
+          onClick={() => void testInstagramConnection()}
+          className="rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text)] disabled:opacity-50"
+        >
+          {syncing ? 'Probando…' : 'Probar conexión'}
+        </button>
+        {syncStatus ? <p className="mt-3 text-[12px] leading-snug text-[var(--text2)]">{syncStatus}</p> : null}
+      </div>
+    ) : null
+
   const calendlySyncBlock =
     platform.key === 'calendly' ? (
       <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
@@ -224,6 +342,34 @@ function ConnectionCardInner({
             type="button"
             disabled={syncing}
             onClick={() => void syncCalendly()}
+            className="rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text)] disabled:opacity-50 sm:mb-0.5"
+          >
+            {syncing ? 'Sincronizando…' : 'Sincronizar'}
+          </button>
+        </div>
+        {syncStatus ? <p className="mt-3 text-[12px] text-[var(--text2)]">{syncStatus}</p> : null}
+      </div>
+    ) : null
+
+  const ghlSyncBlock =
+    platform.key === 'ghl' ? (
+      <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--bg3)] p-4">
+        <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+          Sincronizar leads
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="w-full sm:w-auto sm:min-w-[200px]">
+            <MonthSelector
+              month={ghlSyncMonth}
+              options={ghlSyncMonthOptions}
+              onChange={setGhlSyncMonth}
+              label="Mes"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={syncing}
+            onClick={() => void syncGhl()}
             className="rounded-lg border border-[var(--border2)] bg-[var(--bg4)] px-5 py-2 text-[11px] font-semibold uppercase text-[var(--text)] disabled:opacity-50 sm:mb-0.5"
           >
             {syncing ? 'Sincronizando…' : 'Sincronizar'}
@@ -364,6 +510,8 @@ function ConnectionCardInner({
             {status === 'success' && <p className="text-sm text-[var(--green)]">Guardado.</p>}
             {status === 'error' && <p className="text-sm text-[var(--text2)]">{errorMsg}</p>}
             {calendlySyncBlock}
+            {ghlSyncBlock}
+            {instagramTestBlock}
             {webhookBlock}
           </div>
         )}
@@ -431,6 +579,8 @@ function ConnectionCardInner({
             </div>
           )}
           {calendlySyncBlock}
+          {ghlSyncBlock}
+          {instagramTestBlock}
           {webhookBlock}
         </div>
       )}

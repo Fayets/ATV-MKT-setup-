@@ -166,6 +166,8 @@ def _serialize_sequence(
 def _instagram_api_error_detail(e: urllib.error.HTTPError) -> tuple[int, str]:
     """Traduce errores HTTP de Meta a status + mensaje legible para el cliente."""
     meta_msg = ""
+    error_code: int | None = None
+    error_subcode: int | None = None
     try:
         raw = e.read().decode("utf-8")
         data = json.loads(raw) if raw else {}
@@ -175,12 +177,35 @@ def _instagram_api_error_detail(e: urllib.error.HTTPError) -> tuple[int, str]:
             sub = str(err.get("error_user_msg") or "").strip()
             if sub:
                 meta_msg = f"{meta_msg} — {sub}" if meta_msg else sub
+            try:
+                error_code = int(err.get("code")) if err.get("code") is not None else None
+            except (TypeError, ValueError):
+                error_code = None
+            try:
+                error_subcode = int(err.get("error_subcode")) if err.get("error_subcode") is not None else None
+            except (TypeError, ValueError):
+                error_subcode = None
     except Exception:
         pass
 
     code = e.code
     meta_lower = meta_msg.lower()
-    if code == 401:
+
+    if "access blocked" in meta_lower or "api access blocked" in meta_lower:
+        status, hint = 403, (
+            "Meta bloqueó el acceso a la API. Revisá: (1) app activa en Meta for Developers, "
+            "(2) token nuevo con permisos instagram_basic, instagram_manage_insights, "
+            "pages_show_list y pages_read_engagement, (3) cuenta Instagram Profesional vinculada "
+            "a una página de Facebook, (4) si la app está en modo Desarrollo, tu usuario debe ser "
+            "administrador o tester de la app. Guía: Configuración → token de Instagram."
+        )
+    elif error_subcode == 2207050 or "account is restricted" in meta_lower or "user access is restricted" in meta_lower:
+        status, hint = 403, (
+            "La cuenta de Instagram está restringida o con verificación pendiente. "
+            "Ingresá a instagram.com desde el navegador (no solo la app móvil), completá cualquier "
+            "aviso de seguridad y volvé a sincronizar en unas horas."
+        )
+    elif code == 401:
         if "application has been deleted" in meta_lower or "application was deleted" in meta_lower:
             status, hint = 401, (
                 "La app de Meta vinculada al token fue eliminada. "
@@ -198,11 +223,20 @@ def _instagram_api_error_detail(e: urllib.error.HTTPError) -> tuple[int, str]:
             "Necesitás permisos como instagram_manage_insights (y acceso a la cuenta profesional)."
         )
     elif code in (400, 404):
-        status, hint = 400, "Revisá instagram_user_id y el token en Conexiones."
+        if "unsupported get request" in meta_lower or "object with id" in meta_lower:
+            status, hint = 400, (
+                "El Instagram User ID no es válido o no corresponde a una cuenta Business/Creator. "
+                "En Graph API Explorer probá GET /me/accounts y luego el instagram_business_account.id "
+                "de la página vinculada; ese número va en Conexiones."
+            )
+        else:
+            status, hint = 400, "Revisá instagram_user_id y el token en Conexiones."
     else:
         status, hint = 502, f"Instagram API devolvió HTTP {code}. Verificá credenciales y permisos."
 
     detail = f"{hint} {meta_msg}".strip() if meta_msg else hint
+    if error_code is not None:
+        detail = f"{detail} (código Meta: {error_code})"
     return status, detail
 
 
@@ -675,6 +709,50 @@ class StoriesService:
             "token_saved_at": _iso_dt(token_saved_at),
             "token_expires_at": _iso_dt(token_expires_at),
         }
+
+    def test_instagram_connection(self, user_id: str) -> dict[str, Any]:
+        """Prueba token + instagram_user_id antes de sincronizar historias."""
+        access_token, ig_user_id = self._resolve_instagram_conn(user_id)
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
+        steps: list[dict[str, Any]] = []
+
+        profile_url = (
+            f"https://graph.facebook.com/v25.0/{urllib.parse.quote(ig_user_id)}"
+            "?fields=id,username,name"
+        )
+        try:
+            profile = _http_json(profile_url, headers=headers)
+            steps.append(
+                {
+                    "step": "perfil",
+                    "ok": True,
+                    "detail": f"Cuenta @{profile.get('username') or profile.get('name') or ig_user_id}",
+                }
+            )
+        except urllib.error.HTTPError as e:
+            status, detail = _instagram_api_error_detail(e)
+            steps.append({"step": "perfil", "ok": False, "detail": detail})
+            return {"ok": False, "instagram_user_id": ig_user_id, "steps": steps}
+
+        stories_url = (
+            f"https://graph.facebook.com/v25.0/{urllib.parse.quote(ig_user_id)}/stories"
+            "?fields=id&limit=1"
+        )
+        try:
+            stories_payload = _http_json(stories_url, headers=headers)
+            count = len(stories_payload.get("data") or [])
+            steps.append(
+                {
+                    "step": "stories",
+                    "ok": True,
+                    "detail": f"Acceso OK ({count} historia(s) activa(s) ahora)",
+                }
+            )
+            return {"ok": True, "instagram_user_id": ig_user_id, "steps": steps}
+        except urllib.error.HTTPError as e:
+            status, detail = _instagram_api_error_detail(e)
+            steps.append({"step": "stories", "ok": False, "detail": detail})
+            return {"ok": False, "instagram_user_id": ig_user_id, "steps": steps}
 
     async def sync_instagram(self, user_id: str) -> dict[str, int]:
         async with _sync_lock:
