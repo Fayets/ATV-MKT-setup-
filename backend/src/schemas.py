@@ -480,6 +480,7 @@ class LeadOut(BaseModel):
         description="Días desde 1er contacto hasta completar formulario Calendly (primer_contacto → agendo).",
     )
     ingresos_mensuales: float = 0
+    ingresos_rango: str | None = None
     compromiso: str | None = None
     urgencia: str | None = None
     disposicion_invertir: str | None = None

@@ -263,6 +263,7 @@ def _to_lead_out(row: LeadEntity, norm_prices: dict[str, float] | None = None) -
         objetivo=(row.objetivo or "").strip() or None,
         dias_agendamiento=compute_dias_para_agendar(row.primer_contacto, row.agendo),
         ingresos_mensuales=ing,
+        ingresos_rango=(row.ingresos_rango or "").strip() or None,
         compromiso=None,
         urgencia=None,
         disposicion_invertir=None,

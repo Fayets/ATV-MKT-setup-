@@ -49,6 +49,8 @@ export type Lead = {
   /** Días desde 1er contacto hasta formulario Calendly (API calculado). */
   dias_agendamiento: number | null
   ingresos_mensuales: number
+  /** Rango de ingresos GHL (texto, ej. "5.000-10.000€"). */
+  ingresos_rango?: string | null
   compromiso: string | null
   urgencia: string | null
   disposicion_invertir: string | null
@@ -219,9 +221,10 @@ export function buildColumns(
     { key: 'closer_report', label: 'Reporte closer', width: 200, type: 'text', editable: true, defaultVisible: false },
     { key: 'call_link', label: 'Link de llamada', width: 110, type: 'link', editable: true, defaultVisible: true },
     { key: 'dolores_llamada', label: 'Dolores llamada', width: 200, type: 'text', editable: true, defaultVisible: false },
-    { key: 'razon_compra', label: 'Razón compra', width: 200, type: 'text', editable: true, defaultVisible: true },
-    { key: 'objetivo', label: 'Objetivo', width: 200, type: 'text', editable: true, defaultVisible: true },
-    { key: 'ingresos_mensuales', label: 'Ingresos lead', width: 130, type: 'currency', editable: true, defaultVisible: true },
+    { key: 'razon_compra', label: 'Razón compra', width: 100, type: 'text', editable: true, defaultVisible: true },
+    { key: 'objetivo', label: 'Objetivo', width: 90, type: 'text', editable: true, defaultVisible: true },
+    { key: 'ingresos_lead', label: 'Ingresos lead', width: 160, type: 'text', editable: false, defaultVisible: true },
+    { key: 'ingresos_mensuales', label: 'Ingresos lead ($)', width: 130, type: 'currency', editable: true, defaultVisible: false },
     // Venta
     {
       key: 'programada_ofrecido_llamada',
@@ -243,7 +246,7 @@ export function buildColumns(
     // Extras
     { key: 'revenue', label: 'Facturación', width: 110, type: 'currency', editable: true, defaultVisible: false },
     { key: 'date', label: 'Fecha', width: 110, type: 'date', editable: true, defaultVisible: false },
-    { key: 'notes', label: 'Notas', width: 200, type: 'text', editable: false, defaultVisible: true },
+    { key: 'notes', label: 'Notas', width: 200, type: 'text', editable: false, defaultVisible: false },
     { key: 'calendly_event_uri', label: 'Calendly (evento)', width: 160, type: 'link', editable: true, defaultVisible: false },
     { key: 'calendly_invitee_uri', label: 'Calendly (invitado)', width: 160, type: 'link', editable: true, defaultVisible: false },
     // Paridad con modelo Pony Lead (Neon)

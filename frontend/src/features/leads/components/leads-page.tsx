@@ -136,10 +136,11 @@ function ingresosFromNotes(notes: string | null | undefined): string | null {
   if (notes == null || !String(notes).trim()) return null
   const m = /Ingresos actuales:\s*(.+)/i.exec(String(notes))
   const cap = m?.[1]?.trim().split('\n')[0]?.trim()
-  return cap || null
-}
+  return cap || null}
 
 function leadIngresosDisplay(lead: Lead): string | null {
+  const rango = lead.ingresos_rango?.trim()
+  if (rango) return rango
   const fromNotes = ingresosFromNotes(lead.notes)
   if (fromNotes) return fromNotes
   const n = lead.ingresos_mensuales
@@ -1351,6 +1352,56 @@ function LeadsTable({
   )
 }
 
+/** Campos con respuesta larga: en la grilla solo «Abrir» → modal con texto completo. */
+const MODAL_TEXT_CELL_KEYS = ['razon_compra', 'objetivo'] as const
+
+function AbrirTextoModalCell({
+  text,
+  label,
+  editable,
+  onPreviewText,
+  onStartEdit,
+}: {
+  text: string
+  label: string
+  editable?: boolean
+  onPreviewText: (title: string, body: string) => void
+  onStartEdit?: () => void
+}) {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return (
+      <span
+        onClick={editable ? onStartEdit : undefined}
+        className={`text-[12px] text-[var(--text3)] ${editable ? 'cursor-pointer hover:opacity-80' : ''}`}
+      >
+        —
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onPreviewText(label, trimmed)
+      }}
+      onDoubleClick={
+        editable
+          ? (e) => {
+              e.stopPropagation()
+              onStartEdit?.()
+            }
+          : undefined
+      }
+      title="Ver respuesta completa"
+      className="text-[12px] font-medium text-[var(--accent)] hover:underline cursor-pointer"
+    >
+      Abrir
+    </button>
+  )
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // LEAD TABLE CELL
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1379,8 +1430,8 @@ function LeadsTableCell({
   onOpenAgendaPicker: (lead: Lead) => void
   onOpenFunnelPicker: (lead: Lead) => void
 }) {
-  /** Textos largos: mismo tratamiento en vista / edición (incluye reporte closer y similares). */
-  const longTextCellKeys = ['dolores_setting', 'notes', 'closer_report', 'dolores_llamada', 'razon_compra']
+  /** Textos largos: preview truncado en grilla; edición con textarea. */
+  const longTextCellKeys = ['dolores_setting', 'notes', 'closer_report', 'dolores_llamada']
   /** Caracteres máximos mostrados en la grilla (texto completo en `title` / edición). */
   const LONG_TEXT_PREVIEW_CHARS = 44
   const skipBlurSaveRef = useRef(false)
@@ -1495,6 +1546,15 @@ function LeadsTableCell({
         </span>
       )
     }
+    if (MODAL_TEXT_CELL_KEYS.includes(col.key as (typeof MODAL_TEXT_CELL_KEYS)[number])) {
+      return (
+        <AbrirTextoModalCell
+          text={String(value ?? '')}
+          label={col.label}
+          onPreviewText={onPreviewText}
+        />
+      )
+    }
     if (longTextCellKeys.includes(col.key) && value) {
       const text = String(value)
       const preview =
@@ -1546,7 +1606,7 @@ function LeadsTableCell({
         </select>
       )
     }
-    if (longTextCellKeys.includes(col.key)) {
+    if (longTextCellKeys.includes(col.key) || MODAL_TEXT_CELL_KEYS.includes(col.key as (typeof MODAL_TEXT_CELL_KEYS)[number])) {
       return (
         <textarea
           autoFocus
@@ -1741,6 +1801,18 @@ function LeadsTableCell({
       <span onClick={onStartEdit} className={`${cellClass} font-mono-num ${!value && value !== 0 ? 'text-[var(--text3)]' : ''}`}>
         {value != null ? String(value) : '—'}
       </span>
+    )
+  }
+
+  if (MODAL_TEXT_CELL_KEYS.includes(col.key as (typeof MODAL_TEXT_CELL_KEYS)[number])) {
+    return (
+      <AbrirTextoModalCell
+        text={String(value ?? '')}
+        label={col.label}
+        editable={col.editable}
+        onPreviewText={onPreviewText}
+        onStartEdit={onStartEdit}
+      />
     )
   }
 

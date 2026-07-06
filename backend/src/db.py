@@ -61,6 +61,16 @@ def init_db() -> None:
                 ADD COLUMN IF NOT EXISTS {col} {tipo}
             """)
 
+        for col, tipo in [
+            ("ingresos_rango", "VARCHAR DEFAULT ''"),
+            ("email", "VARCHAR DEFAULT ''"),
+            ("objetivo", "VARCHAR DEFAULT ''"),
+        ]:
+            db.execute(f"""
+                ALTER TABLE lead
+                ADD COLUMN IF NOT EXISTS {col} {tipo}
+            """)
+
     db.create_tables(check_tables=True)
 
     print(f"[db] Base de datos lista ({time.time() - t0:.1f}s)")
