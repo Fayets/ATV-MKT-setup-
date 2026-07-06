@@ -469,22 +469,19 @@ async def ghl_webhook(request: Request):
                     if f"GHL contact_id: {contact_id}" in str(r.notas or ""):
                         r.ig = ig
                         break
-        # Actualizar campos del formulario GHL
-        if any([ingresos_raw, objetivo_raw, razon_compra_raw]):
+        # Ingresos — guardar como texto en notas (viene como rango ej: "2.000-5.000€")
+        if ingresos_raw:
             with db_session:
                 for r in rows_for_user(Lead, uid):
                     if f"GHL contact_id: {contact_id}" in str(r.notas or ""):
-                        if ingresos_raw:
-                            # Intentar parsear número de ingresos
-                            import re
-                            nums = re.findall(r'[\d\.]+', ingresos_raw.replace(',', '.'))
-                            if nums:
-                                try:
-                                    r.ingresos_lead = float(nums[0])
-                                except ValueError:
-                                    r.notas = str(r.notas or "") + f"\nIngresos GHL: {ingresos_raw}"
-                            else:
-                                r.notas = str(r.notas or "") + f"\nIngresos GHL: {ingresos_raw}"
+                        if "Ingresos actuales:" not in str(r.notas or ""):
+                            r.notas = str(r.notas or "") + f"\nIngresos actuales: {ingresos_raw}"
+                        break
+        # Actualizar campos del formulario GHL
+        if any([objetivo_raw, razon_compra_raw]):
+            with db_session:
+                for r in rows_for_user(Lead, uid):
+                    if f"GHL contact_id: {contact_id}" in str(r.notas or ""):
                         if objetivo_raw:
                             r.objetivo = objetivo_raw
                         if razon_compra_raw:
