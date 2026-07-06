@@ -382,6 +382,7 @@ async def ghl_webhook(request: Request):
 
     # Facturación actual
     ingresos_raw = str(
+        body.get("Money") or
         body.get("¿Cuánto estás generando actualmente? (En euros)") or
         body.get("¿Cuánto estás generando actualmente?") or
         body.get("¿A día de hoy cuánto estás generando mensualmente?") or
