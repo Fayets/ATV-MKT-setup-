@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pony.orm import ObjectNotFound, db_session
 from pydantic import BaseModel, Field
@@ -279,13 +279,13 @@ def _apply_appointment_to_lead(
 
 @router.post("/sync")
 def sync_ghl(
+    background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(require_user_id)],
     body: GHLSyncRequest | None = None,
     month: str | None = Query(default=None, description="YYYY-MM opcional"),
 ):
     uid = _uid_int(user_id)
     sync_month = (body.month.strip() if body and body.month else None) or (month.strip() if month else None)
-    print(f"[ghl] sync iniciado user_id={uid} month={sync_month}", flush=True)
 
     with db_session:
         try:
@@ -299,19 +299,19 @@ def sync_ghl(
         if not token or not location_id or not calendar_id:
             raise HTTPException(status_code=400, detail="Faltan credenciales GHL.")
 
-    print(
-        f"[ghl] credenciales OK token={token[:15]}... location={location_id} calendar={calendar_id}",
-        flush=True,
-    )
+    background_tasks.add_task(_run_ghl_sync, uid, token, location_id, calendar_id, sync_month)
+    return {"status": "started", "month": sync_month, "message": "Sync iniciado en background. Los leads aparecerán en minutos."}
 
+
+def _run_ghl_sync(uid: int, token: str, location_id: str, calendar_id: str, sync_month: str | None) -> None:
+    print(f"[ghl] sync background iniciado user_id={uid} month={sync_month}", flush=True)
     created = 0
     updated = 0
-
     try:
         with httpx.Client(timeout=300.0) as client:
-            for item in _iter_contacts_with_appointments(
-                client, token, location_id, calendar_id, sync_month
-            ):
+            items = _fetch_contacts_with_appointments(client, token, location_id, calendar_id, sync_month)
+            print(f"[ghl] fetch completado: {len(items)} items", flush=True)
+            for item in items:
                 contact = item["contact"]
                 appointment = item["appointment"]
                 name = str(contact.get("contactName") or contact.get("firstName") or "").strip()
@@ -320,7 +320,6 @@ def sync_ghl(
                 ghl_contact_id = str(contact.get("id") or "").strip()
                 call_at = _parse_ghl_datetime(appointment.get("startTime"))
                 agendo_at = _parse_ghl_datetime(appointment.get("dateAdded"))
-                print(f"[ghl] preparando lead: {name} email={email} call={call_at}", flush=True)
                 try:
                     result = _apply_appointment_to_lead(
                         uid,
@@ -337,51 +336,13 @@ def sync_ghl(
                     else:
                         updated += 1
                 except Exception as exc:
-                    print(
-                        f"[ghl] ERROR guardando lead {name}: {type(exc).__name__}: {exc}",
-                        flush=True,
-                    )
-                    traceback.print_exc()
-    except HTTPException as exc:
-        if created > 0 or updated > 0:
-            print(
-                f"[ghl] sync parcial tras error HTTP: {exc.detail} "
-                f"(created={created} updated={updated})",
-                flush=True,
-            )
-            _touch_ghl_last_sync(uid)
-            return {
-                "synced": created + updated,
-                "created": created,
-                "updated": updated,
-                "month": sync_month,
-                "warning": str(exc.detail),
-            }
-        raise
+                    print(f"[ghl] ERROR guardando lead {name}: {exc}", flush=True)
+        _touch_ghl_last_sync(uid)
+        print(f"[ghl] sync background listo created={created} updated={updated}", flush=True)
     except Exception as exc:
-        print(f"[ghl] ERROR en fetch: {type(exc).__name__}: {exc}", flush=True)
+        print(f"[ghl] ERROR en sync background: {type(exc).__name__}: {exc}", flush=True)
+        import traceback
         traceback.print_exc()
-        if created > 0 or updated > 0:
-            print(
-                f"[ghl] sync parcial tras error: created={created} updated={updated}",
-                flush=True,
-            )
-            _touch_ghl_last_sync(uid)
-            return {
-                "synced": created + updated,
-                "created": created,
-                "updated": updated,
-                "month": sync_month,
-                "warning": f"{type(exc).__name__}: {exc}",
-            }
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al sincronizar GHL: {type(exc).__name__}: {exc}",
-        ) from exc
-
-    _touch_ghl_last_sync(uid)
-    print(f"[ghl] sync listo created={created} updated={updated}", flush=True)
-    return {"synced": created + updated, "created": created, "updated": updated, "month": sync_month}
 
 @db_session
 def _touch_ghl_last_sync(user_id: int) -> None:
