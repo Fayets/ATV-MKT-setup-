@@ -363,6 +363,11 @@ async def ghl_webhook(request: Request):
 
     print(f"[ghl webhook] keys: {list(body.keys())}", flush=True)
 
+    # Debug ingresos — mostrar todos los campos que contengan "generando" o "facturando"
+    for k, v in body.items():
+        if any(word in str(k).lower() for word in ["generando", "facturando", "ingresos", "factura"]):
+            print(f"[ghl debug ingreso] {k!r} = {v!r}", flush=True)
+
     trigger_data_raw = body.get("triggerData") or {}
     calendar_raw = body.get("calendar") or {}
     print(f"[ghl webhook] triggerData={trigger_data_raw}", flush=True)
