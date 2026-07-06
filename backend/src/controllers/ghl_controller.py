@@ -367,7 +367,6 @@ async def ghl_webhook(request: Request):
     calendar_raw = body.get("calendar") or {}
     print(f"[ghl webhook] triggerData={trigger_data_raw}", flush=True)
     print(f"[ghl webhook] calendar={calendar_raw}", flush=True)
-    print(f"[ghl webhook] ingresos_raw={body.get('¿Cuánto estás generando actualmente? (En euros)')}", flush=True)
 
     # Datos del contacto
     contact_id = str(body.get("contact_id") or body.get("contactId") or "").strip()
@@ -387,6 +386,7 @@ async def ghl_webhook(request: Request):
         body.get("7. ¿Cuánto estás facturando con tu negocio?") or
         ""
     ).strip()
+    print(f"[ghl webhook] ingresos_raw={ingresos_raw!r}", flush=True)
 
     # Objetivo de facturación
     objetivo_raw = str(
