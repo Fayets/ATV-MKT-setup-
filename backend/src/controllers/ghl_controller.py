@@ -362,28 +362,69 @@ async def ghl_webhook(request: Request):
     except Exception:
         body = {}
 
-    print(f"[ghl webhook] payload recibido: {list(body.keys())}", flush=True)
+    print(f"[ghl webhook] keys: {list(body.keys())}", flush=True)
 
-    # Extraer datos del contacto y la cita
-    contact_id = str(body.get("contactId") or body.get("contact_id") or "").strip()
-    name = str(body.get("full_name") or body.get("name") or body.get("contact_name") or "").strip()
+    # Datos del contacto
+    contact_id = str(body.get("contact_id") or body.get("contactId") or "").strip()
+    name = str(body.get("full_name") or body.get("name") or body.get("first_name") or "").strip()
     email = str(body.get("email") or "").strip()
     phone = str(body.get("phone") or "").strip()
+    ig = str(body.get("Usuario de Instagram") or body.get("Cuenta de Instagram") or body.get("Tu cuenta de Instagram") or body.get("Déjame tu Instagram") or "").strip()
 
-    # Datos de la cita
-    start_time_raw = str(body.get("startTime") or body.get("start_time") or "").strip()
-    calendar_id = str(body.get("calendarId") or body.get("calendar_id") or "").strip()
+    # Facturación actual
+    ingresos_raw = str(
+        body.get("¿Cuánto estás generando actualmente? (En euros)") or
+        body.get("¿A día de hoy cuánto estás generando mensualmente?") or
+        body.get("¿Cuánto estás generando actualmente?") or
+        ""
+    ).strip()
+
+    # Objetivo de facturación
+    objetivo_raw = str(
+        body.get("¿Cuál es el objetivo de facturación que tienes con tu negocio para los próximos 4-6 meses?") or
+        body.get("¿Cuál es tu objetivo de facturación?") or
+        ""
+    ).strip()
+
+    # Razón de compra / qué hace falta
+    razon_compra_raw = str(
+        body.get("¿Qué crees que hace falta hoy en día para lograr ese objetivo?") or
+        body.get("¿Qué crees que hace falta hoy en dia para lograr ese objetivo?") or
+        body.get("¿Qué crees que podría haber funcionado mejor?") or
+        ""
+    ).strip()
+
+    # Datos de la cita desde triggerData o calendar
+    trigger_data = body.get("triggerData") or {}
+    if isinstance(trigger_data, dict):
+        start_time_raw = str(trigger_data.get("startTime") or trigger_data.get("start_time") or "").strip()
+        calendar_id = str(trigger_data.get("calendarId") or trigger_data.get("calendar_id") or "").strip()
+    else:
+        start_time_raw = ""
+        calendar_id = ""
+
+    # Fallback desde calendar
+    if not calendar_id:
+        cal = body.get("calendar") or {}
+        if isinstance(cal, dict):
+            calendar_id = str(cal.get("calendarId") or cal.get("id") or "").strip()
+
+    # Fallback desde customData
+    if not start_time_raw:
+        custom = body.get("customData") or {}
+        if isinstance(custom, dict):
+            start_time_raw = str(custom.get("startTime") or custom.get("start_time") or "").strip()
 
     call_at = _parse_ghl_datetime(start_time_raw) if start_time_raw else None
     agendo_at = datetime.utcnow()
 
-    print(f"[ghl webhook] name={name} email={email} call={call_at} calendar={calendar_id}", flush=True)
+    print(f"[ghl webhook] name={name} email={email} phone={phone} ig={ig} call={call_at} calendar={calendar_id}", flush=True)
 
     if not name and not email:
         print("[ghl webhook] sin datos suficientes, ignorando", flush=True)
         return {"status": "ignored"}
 
-    # Buscar el user_id que tiene configurado este calendar_id en GHL
+    # Buscar user_id por calendar_id
     uid: int | None = None
     with db_session:
         conns = list(ApiConnection.select(lambda c: c.platform == "ghl"))
@@ -409,8 +450,38 @@ async def ghl_webhook(request: Request):
             agendo_at=agendo_at,
             ghl_contact_id=contact_id,
         )
-        print(f"[ghl webhook] lead {result}: {name}", flush=True)
+        # Actualizar IG si vino en el payload
+        if ig and result in ("created", "updated"):
+            with db_session:
+                for r in rows_for_user(Lead, uid):
+                    if f"GHL contact_id: {contact_id}" in str(r.notas or ""):
+                        r.ig = ig
+                        break
+        # Actualizar campos del formulario GHL
+        if any([ingresos_raw, objetivo_raw, razon_compra_raw]):
+            with db_session:
+                for r in rows_for_user(Lead, uid):
+                    if f"GHL contact_id: {contact_id}" in str(r.notas or ""):
+                        if ingresos_raw:
+                            # Intentar parsear número de ingresos
+                            import re
+                            nums = re.findall(r'[\d\.]+', ingresos_raw.replace(',', '.'))
+                            if nums:
+                                try:
+                                    r.ingresos_lead = float(nums[0])
+                                except ValueError:
+                                    r.notas = str(r.notas or "") + f"\nIngresos GHL: {ingresos_raw}"
+                            else:
+                                r.notas = str(r.notas or "") + f"\nIngresos GHL: {ingresos_raw}"
+                        if objetivo_raw:
+                            r.objetivo = objetivo_raw
+                        if razon_compra_raw:
+                            r.razon_compra = razon_compra_raw
+                        break
+        print(f"[ghl webhook] lead {result}: {name} ig={ig}", flush=True)
         return {"status": "ok", "action": result}
     except Exception as exc:
         print(f"[ghl webhook] ERROR: {exc}", flush=True)
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "detail": str(exc)}

@@ -195,6 +195,7 @@ class Lead(db.Entity):
     dolores_llamada = Optional(str, default="")
     closer_report = Optional(str, default="")
     razon_compra = Optional(str, default="")
+    objetivo = Optional(str, default="")
     programa_ofrecido = Optional(str, default="")
     programada_ofrecido_llamada = Optional(str, default="")
     # Ventas
