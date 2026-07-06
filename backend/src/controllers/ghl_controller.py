@@ -400,26 +400,25 @@ async def ghl_webhook(request: Request):
         ""
     ).strip()
 
-    # Datos de la cita desde triggerData o calendar
+    # Datos de la cita
     trigger_data = body.get("triggerData") or {}
-    if isinstance(trigger_data, dict):
-        start_time_raw = str(trigger_data.get("startTime") or trigger_data.get("start_time") or "").strip()
-        calendar_id = str(trigger_data.get("calendarId") or trigger_data.get("calendar_id") or "").strip()
-    else:
-        start_time_raw = ""
-        calendar_id = ""
+    calendar_data = body.get("calendar") or {}
 
-    # Fallback desde calendar
-    if not calendar_id:
-        cal = body.get("calendar") or {}
-        if isinstance(cal, dict):
-            calendar_id = str(cal.get("calendarId") or cal.get("id") or "").strip()
+    # startTime viene en calendar, no en triggerData
+    start_time_raw = str(
+        calendar_data.get("startTime") or
+        trigger_data.get("startTime") or
+        trigger_data.get("start_time") or
+        ""
+    ).strip()
 
-    # Fallback desde customData
-    if not start_time_raw:
-        custom = body.get("customData") or {}
-        if isinstance(custom, dict):
-            start_time_raw = str(custom.get("startTime") or custom.get("start_time") or "").strip()
+    calendar_id = str(
+        calendar_data.get("id") or
+        calendar_data.get("calendarId") or
+        trigger_data.get("calendarId") or
+        trigger_data.get("calendar_id") or
+        ""
+    ).strip()
 
     call_at = _parse_ghl_datetime(start_time_raw) if start_time_raw else None
     agendo_at = datetime.utcnow()
