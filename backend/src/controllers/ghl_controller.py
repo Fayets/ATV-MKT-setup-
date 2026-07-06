@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pony.orm import ObjectNotFound, db_session
 from pydantic import BaseModel, Field
@@ -353,3 +353,64 @@ def _touch_ghl_last_sync(user_id: int) -> None:
         conn_row.updated_at = now
     except ObjectNotFound:
         pass
+
+@router.post("/webhook")
+async def ghl_webhook(request: Request):
+    """Recibe webhooks de GHL cuando se agenda una cita nueva."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    print(f"[ghl webhook] payload recibido: {list(body.keys())}", flush=True)
+
+    # Extraer datos del contacto y la cita
+    contact_id = str(body.get("contactId") or body.get("contact_id") or "").strip()
+    name = str(body.get("full_name") or body.get("name") or body.get("contact_name") or "").strip()
+    email = str(body.get("email") or "").strip()
+    phone = str(body.get("phone") or "").strip()
+
+    # Datos de la cita
+    start_time_raw = str(body.get("startTime") or body.get("start_time") or "").strip()
+    calendar_id = str(body.get("calendarId") or body.get("calendar_id") or "").strip()
+
+    call_at = _parse_ghl_datetime(start_time_raw) if start_time_raw else None
+    agendo_at = datetime.utcnow()
+
+    print(f"[ghl webhook] name={name} email={email} call={call_at} calendar={calendar_id}", flush=True)
+
+    if not name and not email:
+        print("[ghl webhook] sin datos suficientes, ignorando", flush=True)
+        return {"status": "ignored"}
+
+    # Buscar el user_id que tiene configurado este calendar_id en GHL
+    uid: int | None = None
+    with db_session:
+        conns = list(ApiConnection.select(lambda c: c.platform == "ghl"))
+        for conn in conns:
+            creds = conn.credentials if isinstance(conn.credentials, dict) else {}
+            if str(creds.get("calendar_id") or "") == calendar_id:
+                uid = conn.user_id
+                break
+        if uid is None and conns:
+            uid = conns[0].user_id
+
+    if uid is None:
+        print("[ghl webhook] no se encontró user con conexión GHL", flush=True)
+        return {"status": "no_user"}
+
+    try:
+        result = _apply_appointment_to_lead(
+            uid,
+            name=name,
+            email=email,
+            phone=phone,
+            call_at=call_at,
+            agendo_at=agendo_at,
+            ghl_contact_id=contact_id,
+        )
+        print(f"[ghl webhook] lead {result}: {name}", flush=True)
+        return {"status": "ok", "action": result}
+    except Exception as exc:
+        print(f"[ghl webhook] ERROR: {exc}", flush=True)
+        return {"status": "error", "detail": str(exc)}
