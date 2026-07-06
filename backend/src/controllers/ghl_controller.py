@@ -364,6 +364,12 @@ async def ghl_webhook(request: Request):
 
     print(f"[ghl webhook] keys: {list(body.keys())}", flush=True)
 
+    trigger_data_raw = body.get("triggerData") or {}
+    calendar_raw = body.get("calendar") or {}
+    print(f"[ghl webhook] triggerData={trigger_data_raw}", flush=True)
+    print(f"[ghl webhook] calendar={calendar_raw}", flush=True)
+    print(f"[ghl webhook] ingresos_raw={body.get('¿Cuánto estás generando actualmente? (En euros)')}", flush=True)
+
     # Datos del contacto
     contact_id = str(body.get("contact_id") or body.get("contactId") or "").strip()
     name = str(body.get("full_name") or body.get("name") or body.get("first_name") or "").strip()
