@@ -474,6 +474,7 @@ class LeadOut(BaseModel):
     dolores_setting: str | None = None
     dolores_llamada: str | None = None
     razon_compra: str | None = None
+    objetivo: str | None = None
     dias_agendamiento: int | None = Field(
         default=None,
         description="Días desde 1er contacto hasta completar formulario Calendly (primer_contacto → agendo).",

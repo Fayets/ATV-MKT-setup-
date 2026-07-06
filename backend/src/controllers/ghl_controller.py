@@ -243,6 +243,8 @@ def _apply_appointment_to_lead(
     if row is not None:
         if display_name:
             row.nombre = display_name
+        if email:
+            row.email = email
         if call_at is not None:
             row.call = call_at
         if agendo_at is not None:
@@ -265,6 +267,7 @@ def _apply_appointment_to_lead(
     Lead(
         user_id=user_id,
         nombre=display_name,
+        email=email or "",
         telefono=phone or "",
         origen="GHL",
         notas="\n".join(notas_parts),
@@ -380,8 +383,12 @@ async def ghl_webhook(request: Request):
     # Facturación actual
     ingresos_raw = str(
         body.get("¿Cuánto estás generando actualmente? (En euros)") or
-        body.get("¿A día de hoy cuánto estás generando mensualmente?") or
         body.get("¿Cuánto estás generando actualmente?") or
+        body.get("¿A día de hoy cuánto estás generando mensualmente?") or
+        body.get("Ingresos netos estimados del Lead") or
+        body.get("5. Facturación mensual actual") or
+        body.get("5. Facturación actual mensual") or
+        body.get("7. ¿Cuánto estás facturando con tu negocio?") or
         ""
     ).strip()
 

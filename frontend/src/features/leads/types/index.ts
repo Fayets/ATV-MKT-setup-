@@ -45,6 +45,7 @@ export type Lead = {
   dolores_setting: string | null
   dolores_llamada: string | null
   razon_compra: string | null
+  objetivo: string | null
   /** Días desde 1er contacto hasta formulario Calendly (API calculado). */
   dias_agendamiento: number | null
   ingresos_mensuales: number
@@ -219,6 +220,7 @@ export function buildColumns(
     { key: 'call_link', label: 'Link de llamada', width: 110, type: 'link', editable: true, defaultVisible: true },
     { key: 'dolores_llamada', label: 'Dolores llamada', width: 200, type: 'text', editable: true, defaultVisible: true },
     { key: 'razon_compra', label: 'Razón compra', width: 200, type: 'text', editable: true, defaultVisible: true },
+    { key: 'objetivo', label: 'Objetivo', width: 200, type: 'text', editable: true, defaultVisible: true },
     { key: 'ingresos_mensuales', label: 'Ingresos lead', width: 130, type: 'currency', editable: true, defaultVisible: true },
     // Venta
     {

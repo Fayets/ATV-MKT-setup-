@@ -167,6 +167,7 @@ class Lead(db.Entity):
     # Identificación (Optional(str) con default="" para evitar None al instanciar en Pony)
     nombre = Optional(str, default="")
     ig = Optional(str, default="")
+    email = Optional(str, default="")
     telefono = Optional(str, default="")
     avatar = Optional(str, default="")
     origen = Optional(str, default="")

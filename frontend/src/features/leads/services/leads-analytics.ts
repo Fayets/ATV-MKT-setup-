@@ -4,7 +4,10 @@ import { apiFetch } from '@/lib/api'
 // TYPES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-export type LeadRow = Record<string, unknown>
+export type LeadRow = Record<string, unknown> & {
+  email?: string | null
+  objetivo?: string | null
+}
 
 export type LeadsFunnel = {
   chats: number
