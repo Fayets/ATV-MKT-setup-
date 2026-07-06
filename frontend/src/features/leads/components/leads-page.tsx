@@ -114,12 +114,37 @@ function avatarTypeSelectOptions(lead: Lead, parentOpts: string[]): string[] {
   return ['', ...[...rest, v].sort((a, b) => a.localeCompare(b, 'es'))]
 }
 
-/** Columna Email (solo vista): extrae de `notes` la línea `Calendly email: …`. */
-function calendlyEmailFromNotes(notes: string | null | undefined): string | null {
+/** Email del lead: columna BD/API, o línea en notas (Calendly / GHL). */
+function emailFromNotes(notes: string | null | undefined): string | null {
   if (notes == null || !String(notes).trim()) return null
-  const m = /Calendly email:\s*(.+)/.exec(String(notes))
-  const cap = m?.[1]?.trim()
+  for (const pattern of [/Calendly email:\s*(.+)/i, /GHL email:\s*(.+)/i]) {
+    const m = pattern.exec(String(notes))
+    const cap = m?.[1]?.trim().split('\n')[0]?.trim()
+    if (cap) return cap
+  }
+  return null
+}
+
+function leadEmailDisplay(lead: Lead): string | null {
+  const direct = lead.email?.trim()
+  if (direct) return direct
+  return emailFromNotes(lead.notes)
+}
+
+/** Ingresos del lead: texto en notas (GHL) o monto numérico de la API. */
+function ingresosFromNotes(notes: string | null | undefined): string | null {
+  if (notes == null || !String(notes).trim()) return null
+  const m = /Ingresos actuales:\s*(.+)/i.exec(String(notes))
+  const cap = m?.[1]?.trim().split('\n')[0]?.trim()
   return cap || null
+}
+
+function leadIngresosDisplay(lead: Lead): string | null {
+  const fromNotes = ingresosFromNotes(lead.notes)
+  if (fromNotes) return fromNotes
+  const n = lead.ingresos_mensuales
+  if (n != null && n > 0) return String(n)
+  return null
 }
 
 /** ISO `YYYY-MM-DD` o `…T00:00:00…` → solo fecha `dd/mm/aaaa`; si no parsea, null. */
@@ -1367,8 +1392,10 @@ function LeadsTableCell({
       : col.key === 'agendo_en'
         ? agendoEnStoredValue(lead)
         : col.key === 'email'
-          ? calendlyEmailFromNotes(lead.notes)
-          : raw
+          ? leadEmailDisplay(lead)
+          : col.key === 'ingresos_lead'
+            ? leadIngresosDisplay(lead)
+            : raw
 
   if (readOnly) {
     if (col.key === 'client_name') {

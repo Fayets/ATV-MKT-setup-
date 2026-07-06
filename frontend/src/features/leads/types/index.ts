@@ -213,12 +213,12 @@ export function buildColumns(
     { key: 'call_at', label: 'Fecha call (alt.)', width: 110, type: 'date', editable: true, defaultVisible: false },
     // Setting (pre-llamada)
     { key: 'setter', label: 'Setter', width: 110, type: 'badge', editable: true, options: ['', ...setterNames], colors: Object.fromEntries(setterNames.map(n => [n, '#3B82F6'])), defaultVisible: true },
-    { key: 'dolores_setting', label: 'Dolores setting', width: 200, type: 'text', editable: true, defaultVisible: true },
+    { key: 'dolores_setting', label: 'Dolores setting', width: 200, type: 'text', editable: true, defaultVisible: false },
     // Llamada (closer)
     { key: 'closer', label: 'Closer', width: 110, type: 'badge', editable: true, options: ['', ...closerNames], colors: Object.fromEntries(closerNames.map(n => [n, '#8B5CF6'])), defaultVisible: true },
-    { key: 'closer_report', label: 'Reporte closer', width: 200, type: 'text', editable: true, defaultVisible: true },
+    { key: 'closer_report', label: 'Reporte closer', width: 200, type: 'text', editable: true, defaultVisible: false },
     { key: 'call_link', label: 'Link de llamada', width: 110, type: 'link', editable: true, defaultVisible: true },
-    { key: 'dolores_llamada', label: 'Dolores llamada', width: 200, type: 'text', editable: true, defaultVisible: true },
+    { key: 'dolores_llamada', label: 'Dolores llamada', width: 200, type: 'text', editable: true, defaultVisible: false },
     { key: 'razon_compra', label: 'Razón compra', width: 200, type: 'text', editable: true, defaultVisible: true },
     { key: 'objetivo', label: 'Objetivo', width: 200, type: 'text', editable: true, defaultVisible: true },
     { key: 'ingresos_mensuales', label: 'Ingresos lead', width: 130, type: 'currency', editable: true, defaultVisible: true },
@@ -243,7 +243,7 @@ export function buildColumns(
     // Extras
     { key: 'revenue', label: 'Facturación', width: 110, type: 'currency', editable: true, defaultVisible: false },
     { key: 'date', label: 'Fecha', width: 110, type: 'date', editable: true, defaultVisible: false },
-    { key: 'notes', label: 'Notas', width: 200, type: 'text', editable: true, defaultVisible: false },
+    { key: 'notes', label: 'Notas', width: 200, type: 'text', editable: false, defaultVisible: true },
     { key: 'calendly_event_uri', label: 'Calendly (evento)', width: 160, type: 'link', editable: true, defaultVisible: false },
     { key: 'calendly_invitee_uri', label: 'Calendly (invitado)', width: 160, type: 'link', editable: true, defaultVisible: false },
     // Paridad con modelo Pony Lead (Neon)
