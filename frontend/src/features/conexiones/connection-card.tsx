@@ -292,11 +292,11 @@ function ConnectionCardInner({
         return
       }
       if (data.ok) {
-        const storiesStep = data.steps?.find((s) => s.step === 'stories')
-        setSyncStatus(storiesStep?.detail || 'Conexión OK — podés sincronizar historias.')
+        const lines = (data.steps ?? []).map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
+        setSyncStatus(lines.join('\n') || 'Conexión OK — podés sincronizar historias.')
       } else {
-        const failed = data.steps?.find((s) => !s.ok)
-        setSyncStatus(`Error: ${failed?.detail || 'No se pudo acceder a historias.'}`)
+        const lines = (data.steps ?? []).map((s) => `${s.ok ? '✓' : '✗'} ${s.step}: ${s.detail}`)
+        setSyncStatus(lines.join('\n') || `Error: ${data.steps?.find((s) => !s.ok)?.detail || 'No se pudo acceder a historias.'}`)
       }
     } catch (e) {
       setSyncStatus(e instanceof Error ? e.message : 'Error al probar conexión')
@@ -319,7 +319,9 @@ function ConnectionCardInner({
         >
           {syncing ? 'Probando…' : 'Probar conexión'}
         </button>
-        {syncStatus ? <p className="mt-3 text-[12px] leading-snug text-[var(--text2)]">{syncStatus}</p> : null}
+        {syncStatus ? (
+          <p className="mt-3 whitespace-pre-line text-[12px] leading-snug text-[var(--text2)]">{syncStatus}</p>
+        ) : null}
       </div>
     ) : null
 

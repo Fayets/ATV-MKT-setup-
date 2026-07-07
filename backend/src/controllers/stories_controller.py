@@ -156,7 +156,7 @@ def test_instagram_connection(
 @router.post("/sync")
 async def sync_stories(
     user_id: Annotated[str, Depends(get_current_user)],
-) -> dict[str, int]:
+) -> dict[str, Any]:
     try:
         return await service.sync_instagram(user_id)
     except HTTPException as e:

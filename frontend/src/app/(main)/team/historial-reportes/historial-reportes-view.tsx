@@ -400,6 +400,8 @@ export default function TeamHistorialReportesPage() {
   const [pdfDesdeModal, setPdfDesdeModal] = useState('')
   const [pdfHastaModal, setPdfHastaModal] = useState('')
   const [pdfFiltro, setPdfFiltro] = useState<ReporteFiltro>('todos')
+  const [deleteTarget, setDeleteTarget] = useState<ReportRow | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   const fetchReports = useCallback(async () => {
     if (!ready || !userId) {
@@ -536,6 +538,28 @@ export default function TeamHistorialReportesPage() {
     }
     void runPdfDownload(pdfDesdeModal, pdfHastaModal)
   }
+
+  const handleDeleteReport = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    try {
+      const res = await apiFetch(`/team/reports/${deleteTarget.kind}/${deleteTarget.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        toast(errMessage(await res.json().catch(() => ({}))))
+        return
+      }
+      toast('Reporte eliminado')
+      setDeleteTarget(null)
+      window.dispatchEvent(new Event('atvmkt-team-reports-changed'))
+      await fetchReports()
+    } catch {
+      toast('No se pudo eliminar el reporte.')
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [deleteTarget, fetchReports, toast])
 
   if (!ready) {
     return <div className="py-12 text-[13px] text-[var(--text3)]">Cargando…</div>
@@ -690,6 +714,40 @@ export default function TeamHistorialReportesPage() {
         </div>
       </Modal>
 
+      {deleteTarget ? (
+        <Modal
+          open
+          onClose={() => !deleteBusy && setDeleteTarget(null)}
+          title="Eliminar reporte"
+          maxWidth="420px"
+          compact
+        >
+          <p className="text-[13px] leading-relaxed text-[var(--text2)]">
+            ¿Eliminar{' '}
+            <span className="font-medium text-[var(--text)]">{reportListTitle(deleteTarget)}</span>? No se puede
+            deshacer.
+          </p>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              disabled={deleteBusy}
+              onClick={() => setDeleteTarget(null)}
+              className="rounded-lg border border-[var(--border2)] bg-[var(--bg3)] px-4 py-2 text-[11px] font-semibold uppercase text-[var(--text2)] transition-colors hover:border-[var(--text3)] disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={deleteBusy}
+              onClick={() => void handleDeleteReport()}
+              className="btn-primary rounded-lg px-4 py-2 text-[11px] font-semibold uppercase transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              {deleteBusy ? 'Eliminando…' : 'Eliminar'}
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
       <div className="glass-card glass-card--performant flex flex-wrap items-end gap-4 p-4 sm:p-5">
         <div>
           <label className="mb-1.5 block text-[11px] font-semibold text-[var(--text)]">Reportes de</label>
@@ -762,8 +820,22 @@ export default function TeamHistorialReportesPage() {
           <div className="glass-card glass-card--performant divide-y divide-[var(--border2)] overflow-hidden rounded-lg border border-[var(--border)]">
             {paginatedReports.map((r) => (
               <details key={`${r.kind}-${r.id}`} className="group bg-[var(--bg2)]/30 open:bg-[var(--bg3)]/40">
-                <summary className="cursor-pointer list-none px-4 py-2.5 text-[11px] font-extrabold uppercase leading-snug tracking-wide text-[var(--text)] transition-colors hover:bg-[var(--nav-hover)] marker:content-none [&::-webkit-details-marker]:hidden">
-                  <span className="select-none">{reportListTitle(r)}</span>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--nav-hover)] marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0 flex-1 select-none text-[11px] font-extrabold uppercase leading-snug tracking-wide text-[var(--text)]">
+                    {reportListTitle(r)}
+                  </span>
+                  <button
+                    type="button"
+                    title="Eliminar reporte"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setDeleteTarget(r)
+                    }}
+                    className="shrink-0 rounded px-2 py-1 text-[14px] text-[var(--text3)] transition-colors hover:bg-[var(--bg4)] hover:text-[var(--text)]"
+                  >
+                    ✕
+                  </button>
                 </summary>
                 <div className="border-t border-[var(--border2)] px-4 pb-3 pt-2">
                   <ReportDetail r={r} />

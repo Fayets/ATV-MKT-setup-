@@ -33,6 +33,93 @@ _refresh_metrics_tasks: dict[str, asyncio.Task] = {}
 _range_preview_lock = threading.Lock()
 _range_preview_media: dict[str, list[dict]] = {}
 QUICK_REELS_SYNC_LIMIT = 10
+IG_GRAPH_VERSION = "v25.0"
+
+
+def _extract_insight_value(item: dict) -> int | None:
+    """Extrae entero de insights Graph API (values[] o total_value / breakdowns)."""
+    values = item.get("values")
+    if isinstance(values, list) and values:
+        first = values[0]
+        if isinstance(first, dict) and first.get("value") is not None:
+            try:
+                return int(first["value"])
+            except (TypeError, ValueError):
+                pass
+    total = item.get("total_value")
+    if isinstance(total, dict):
+        if total.get("value") is not None:
+            try:
+                return int(total["value"])
+            except (TypeError, ValueError):
+                pass
+        breakdowns = total.get("breakdowns")
+        if isinstance(breakdowns, list):
+            acc = 0
+            found = False
+            for bd in breakdowns:
+                if not isinstance(bd, dict):
+                    continue
+                results = bd.get("results")
+                if not isinstance(results, list):
+                    continue
+                for row in results:
+                    if isinstance(row, dict) and row.get("value") is not None:
+                        try:
+                            acc += int(row["value"])
+                            found = True
+                        except (TypeError, ValueError):
+                            continue
+            if found:
+                return acc
+    return None
+
+
+def _insights_http_json(url: str, headers: dict[str, str]) -> dict | None:
+    """GET a insights sin abortar el sync si una métrica falla."""
+    try:
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+        with urllib.request.urlopen(req, timeout=45, context=ssl_ctx) as response:
+            payload = response.read().decode("utf-8")
+        return json.loads(payload) if payload else {}
+    except urllib.error.HTTPError as e:
+        try:
+            err_raw = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            err_raw = ""
+        print(f"[reels] insights HTTP {e.code}: {err_raw}", flush=True)
+        return None
+    except Exception as e:
+        print(f"[reels] insights error: {e}", flush=True)
+        return None
+
+
+def _fetch_ig_insight_metric(access_token: str, media_id: str, metric: str) -> int | None:
+    headers = {"Accept": "application/json"}
+    token_q = urllib.parse.quote(access_token)
+    mid_q = urllib.parse.quote(media_id)
+    metric_q = urllib.parse.quote(metric)
+    base = f"https://graph.facebook.com/{IG_GRAPH_VERSION}/{mid_q}/insights"
+    for url in (
+        f"{base}?metric={metric_q}&metric_type=total_value&access_token={token_q}",
+        f"{base}?metric={metric_q}&access_token={token_q}",
+    ):
+        payload = _insights_http_json(url, headers=headers)
+        if not isinstance(payload, dict):
+            continue
+        rows = payload.get("data")
+        if not isinstance(rows, list):
+            continue
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("name") or "").strip() != metric:
+                continue
+            val = _extract_insight_value(item)
+            if val is not None:
+                return val
+    return None
 
 
 class ReelsServices:
@@ -652,79 +739,41 @@ AND EXISTS (
         like_count: int | None = None,
         comments_count: int | None = None,
     ) -> dict[str, int]:
-        """Métricas de un reel vía Graph API (plays, reach, likes, comentarios, shares, guardados)."""
-        headers = {"Accept": "application/json"}
+        """Métricas de un reel vía Graph API (plays, reach, likes, comentarios, shares, guardados).
+
+        Likes/comentarios pueden venir del objeto media (instagram_basic).
+        Plays/reach/shares requieren insights (instagram_manage_insights).
+        """
         insights = {
-            "ig_reels_avg_watch_time": 0,
             "reach": 0,
             "saved": 0,
             "shares": 0,
             "likes": 0,
             "comments": 0,
-            "total_interactions": 0,
         }
         plays_result = 0
-        for plays_metric in ["video_views", "views"]:
-            plays_url = (
-                f"https://graph.facebook.com/v19.0/{urllib.parse.quote(media_id)}/insights"
-                f"?metric={urllib.parse.quote(plays_metric)}"
-                f"&access_token={urllib.parse.quote(access_token)}"
-            )
-            try:
-                plays_payload = self._http_json(plays_url, headers=headers)
-                plays_data = plays_payload.get("data")
-                metrics_rows = plays_data if isinstance(plays_data, list) else []
-                for m in metrics_rows:
-                    if not isinstance(m, dict):
-                        continue
-                    values = m.get("values")
-                    if isinstance(values, list) and values and isinstance(values[0], dict):
-                        plays_result = int(values[0].get("value") or 0)
-                        break
+        for plays_metric in ("views", "video_views", "plays"):
+            val = _fetch_ig_insight_metric(access_token, media_id, plays_metric)
+            if val is not None:
+                plays_result = val
                 break
-            except Exception:
-                continue
 
-        for metric_name in [
-            "ig_reels_avg_watch_time",
-            "reach",
-            "saved",
-            "shares",
-            "likes",
-            "comments",
-            "total_interactions",
-        ]:
-            insights_url = (
-                f"https://graph.facebook.com/v19.0/{urllib.parse.quote(media_id)}/insights"
-                f"?metric={urllib.parse.quote(metric_name)}"
-                f"&access_token={urllib.parse.quote(access_token)}"
-            )
-            try:
-                insights_payload = self._http_json(insights_url, headers=headers)
-                metrics_rows = insights_payload.get("data") if isinstance(insights_payload.get("data"), list) else []
-                for m in metrics_rows:
-                    if not isinstance(m, dict):
-                        continue
-                    name = str(m.get("name") or "").strip()
-                    values = m.get("values")
-                    value = 0
-                    if isinstance(values, list) and values and isinstance(values[0], dict):
-                        value = int(values[0].get("value") or 0)
-                    if name in insights:
-                        insights[name] = value
-            except Exception:
-                continue
+        for metric_name in ("reach", "saved", "shares", "likes", "comments"):
+            val = _fetch_ig_insight_metric(access_token, media_id, metric_name)
+            if val is not None:
+                insights[metric_name] = val
 
         likes_base = 0 if like_count is None else int(like_count)
         comments_base = 0 if comments_count is None else int(comments_count)
         if like_count is None or comments_count is None:
             try:
+                token_q = urllib.parse.quote(access_token)
+                mid_q = urllib.parse.quote(media_id)
                 mf_url = (
-                    f"https://graph.facebook.com/v19.0/{urllib.parse.quote(media_id)}"
-                    "?fields=like_count,comments_count"
-                    f"&access_token={urllib.parse.quote(access_token)}"
+                    f"https://graph.facebook.com/{IG_GRAPH_VERSION}/{mid_q}"
+                    f"?fields=like_count,comments_count&access_token={token_q}"
                 )
-                mf = self._http_json(mf_url, headers=headers)
+                mf = self._http_json(mf_url, headers={"Accept": "application/json"})
                 if like_count is None:
                     likes_base = int(mf.get("like_count") or 0)
                 if comments_count is None:
@@ -812,7 +861,7 @@ AND EXISTS (
         headers = {"Accept": "application/json"}
         q_fields = urllib.parse.quote(self._ig_media_item_fields_brief(), safe=",")
         url = (
-            f"https://graph.facebook.com/v19.0/{urllib.parse.quote(media_id)}"
+            f"https://graph.facebook.com/{IG_GRAPH_VERSION}/{urllib.parse.quote(media_id)}"
             f"?fields={q_fields}"
             f"&access_token={urllib.parse.quote(access_token)}"
         )
@@ -837,7 +886,7 @@ AND EXISTS (
         list_fields = "id,media_type,timestamp" if minimal_preview else self._ig_media_item_fields_brief()
         q_fields = urllib.parse.quote(list_fields, safe=",")
         media_url = (
-            f"https://graph.facebook.com/v19.0/{urllib.parse.quote(ig_user_id)}/media"
+            f"https://graph.facebook.com/{IG_GRAPH_VERSION}/{urllib.parse.quote(ig_user_id)}/media"
             f"?fields={q_fields}"
             f"&access_token={urllib.parse.quote(access_token)}"
         )

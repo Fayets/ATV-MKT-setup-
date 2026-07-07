@@ -442,6 +442,34 @@ def list_team_reports(
     return {"reports": rows}
 
 
+@router.delete("/reports/{kind}/{report_id}")
+def delete_team_report(
+    kind: str,
+    report_id: int,
+    user_id: str = Depends(require_user_id),
+) -> dict[str, str]:
+    """Elimina un reporte del historial (setter, closer o seguimiento)."""
+    uid = _parse_uid(user_id)
+    kind_norm = kind.strip().lower()
+    if kind_norm not in ("setter", "closer", "seguimiento"):
+        raise HTTPException(status_code=400, detail="kind debe ser setter, closer o seguimiento.")
+    entity = {
+        "setter": SetterReport,
+        "closer": CloserReport,
+        "seguimiento": SeguimientoReport,
+    }[kind_norm]
+    with db_session:
+        row = None
+        for r in rows_for_user(entity, uid):
+            if int(r.id) == int(report_id):
+                row = r
+                break
+        if row is None:
+            raise HTTPException(status_code=404, detail="Reporte no encontrado.")
+        row.delete()
+    return {"status": "ok"}
+
+
 @router.get("/reports/pdf")
 def team_reports_pdf(
     desde: date = Query(...),

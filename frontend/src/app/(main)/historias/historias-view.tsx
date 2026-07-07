@@ -341,8 +341,15 @@ export default function HistoriasPage() {
         toast(msg)
       } else {
         const okText = `Sincronizadas: ${Number(result.synced || 0)} | Sin match: ${Number(result.not_matched || 0)}`
-        setSyncMessage(okText)
-        toast(okText)
+        const warning = typeof (result as { warning?: string }).warning === 'string'
+          ? (result as { warning: string }).warning
+          : ''
+        setSyncMessage(warning ? `${okText} — ${warning}` : okText)
+        if (warning) {
+          toast(warning)
+        } else {
+          toast(okText)
+        }
         await fetchData()
         await fetchSyncStatus()
       }
