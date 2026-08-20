@@ -36,11 +36,17 @@ def init_db() -> None:
         for col, tipo in [
             ("conversaciones_stories", "INTEGER NOT NULL DEFAULT 0"),
             ("conversaciones_reels", "INTEGER NOT NULL DEFAULT 0"),
+            ("conversaciones_youtube", "INTEGER NOT NULL DEFAULT 0"),
+            ("conversaciones_whatsapp", "INTEGER NOT NULL DEFAULT 0"),
             ("agendas_stories", "INTEGER NOT NULL DEFAULT 0"),
             ("agendas_reels", "INTEGER NOT NULL DEFAULT 0"),
             ("agendas_ads", "INTEGER NOT NULL DEFAULT 0"),
+            ("agendas_youtube", "INTEGER NOT NULL DEFAULT 0"),
+            ("agendas_whatsapp", "INTEGER NOT NULL DEFAULT 0"),
             ("links_enviados_stories", "INTEGER NOT NULL DEFAULT 0"),
             ("links_enviados_reels", "INTEGER NOT NULL DEFAULT 0"),
+            ("links_enviados_youtube", "INTEGER NOT NULL DEFAULT 0"),
+            ("links_enviados_whatsapp", "INTEGER NOT NULL DEFAULT 0"),
         ]:
             db.execute(f"""
                 ALTER TABLE setter_report

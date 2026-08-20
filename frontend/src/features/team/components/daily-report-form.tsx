@@ -33,11 +33,17 @@ type DailyReport = {
   insights_marketing: string
   conversaciones_stories: number
   conversaciones_reels: number
+  conversaciones_youtube: number
+  conversaciones_whatsapp: number
   agendas_stories: number
   agendas_reels: number
   agendas_ads: number
+  agendas_youtube: number
+  agendas_whatsapp: number
   links_enviados_stories: number
   links_enviados_reels: number
+  links_enviados_youtube: number
+  links_enviados_whatsapp: number
   shows_organico: number
   shows_ads: number
   cierres_organico: number
@@ -82,11 +88,17 @@ type NumKey =
   | 'ingreso'
   | 'conversaciones_stories'
   | 'conversaciones_reels'
+  | 'conversaciones_youtube'
+  | 'conversaciones_whatsapp'
   | 'agendas_stories'
   | 'agendas_reels'
   | 'agendas_ads'
+  | 'agendas_youtube'
+  | 'agendas_whatsapp'
   | 'links_enviados_stories'
   | 'links_enviados_reels'
+  | 'links_enviados_youtube'
+  | 'links_enviados_whatsapp'
   | 'shows_organico'
   | 'shows_ads'
   | 'cierres_organico'
@@ -148,11 +160,17 @@ export function DailyReportSection({ role }: Props) {
     insights_marketing: '',
     conversaciones_stories: 0,
     conversaciones_reels: 0,
+    conversaciones_youtube: 0,
+    conversaciones_whatsapp: 0,
     agendas_stories: 0,
     agendas_reels: 0,
     agendas_ads: 0,
+    agendas_youtube: 0,
+    agendas_whatsapp: 0,
     links_enviados_stories: 0,
     links_enviados_reels: 0,
+    links_enviados_youtube: 0,
+    links_enviados_whatsapp: 0,
     shows_organico: 0,
     shows_ads: 0,
     cierres_organico: 0,
@@ -314,9 +332,16 @@ export function DailyReportSection({ role }: Props) {
   )
 
   const setterConversacionesTotal =
-    form.conversaciones_stories + form.conversaciones_reels
+    form.conversaciones_stories +
+    form.conversaciones_reels +
+    form.conversaciones_youtube +
+    form.conversaciones_whatsapp
   const setterAgendasTotal =
-    form.agendas_stories + form.agendas_reels + form.agendas_ads
+    form.agendas_stories +
+    form.agendas_reels +
+    form.agendas_ads +
+    form.agendas_youtube +
+    form.agendas_whatsapp
   const closerShowsTotal = form.shows_organico + form.shows_ads
   const closerCierresTotal = form.cierres_organico + form.cierres_ads
 
@@ -364,9 +389,22 @@ export function DailyReportSection({ role }: Props) {
     setSaving(true)
     try {
       if (role === 'setter') {
-        const conversaciones = form.conversaciones_stories + form.conversaciones_reels
-        const agendas = form.agendas_stories + form.agendas_reels + form.agendas_ads
-        const links_enviados = form.links_enviados_stories + form.links_enviados_reels
+        const conversaciones =
+          form.conversaciones_stories +
+          form.conversaciones_reels +
+          form.conversaciones_youtube +
+          form.conversaciones_whatsapp
+        const agendas =
+          form.agendas_stories +
+          form.agendas_reels +
+          form.agendas_ads +
+          form.agendas_youtube +
+          form.agendas_whatsapp
+        const links_enviados =
+          form.links_enviados_stories +
+          form.links_enviados_reels +
+          form.links_enviados_youtube +
+          form.links_enviados_whatsapp
         const res = await apiFetch('/team/setter-reports', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -378,11 +416,17 @@ export function DailyReportSection({ role }: Props) {
             links_enviados,
             conversaciones_stories: form.conversaciones_stories,
             conversaciones_reels: form.conversaciones_reels,
+            conversaciones_youtube: form.conversaciones_youtube,
+            conversaciones_whatsapp: form.conversaciones_whatsapp,
             agendas_stories: form.agendas_stories,
             agendas_reels: form.agendas_reels,
             agendas_ads: form.agendas_ads,
+            agendas_youtube: form.agendas_youtube,
+            agendas_whatsapp: form.agendas_whatsapp,
             links_enviados_stories: form.links_enviados_stories,
             links_enviados_reels: form.links_enviados_reels,
+            links_enviados_youtube: form.links_enviados_youtube,
+            links_enviados_whatsapp: form.links_enviados_whatsapp,
             notas: null,
             sentimiento_trafico: form.sentimiento_trafico.trim() || null,
             avatar_tipo_agendas: form.avatar_tipo_agendas.trim() || null,
@@ -643,6 +687,26 @@ export function DailyReportSection({ role }: Props) {
                       { key: 'conversaciones_reels', label: 'Convers reales' },
                       { key: 'links_enviados_reels', label: 'Calendlys enviados' },
                       { key: 'agendas_reels', label: 'Llamadas agendadas' },
+                    ])}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+                      YouTube
+                    </div>
+                    {setterConversacionesRow([
+                      { key: 'conversaciones_youtube', label: 'Conversaciones reales' },
+                      { key: 'links_enviados_youtube', label: 'Calendlys enviados' },
+                      { key: 'agendas_youtube', label: 'Llamadas agendadas' },
+                    ])}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
+                      WhatsApp
+                    </div>
+                    {setterConversacionesRow([
+                      { key: 'conversaciones_whatsapp', label: 'Conversaciones reales' },
+                      { key: 'links_enviados_whatsapp', label: 'Calendlys enviados' },
+                      { key: 'agendas_whatsapp', label: 'Llamadas agendadas' },
                     ])}
                   </div>
                   <div className="border-t border-[var(--border)] pt-4">

@@ -55,9 +55,13 @@ export type LeadsAnalytics = LeadsFunnel & {
   chatsReels: number
   conversacionesStories: number
   conversacionesReels: number
+  conversacionesYoutube: number
+  conversacionesWhatsapp: number
   agendasStories: number
   agendasReels: number
   agendasAds: number
+  agendasYoutube: number
+  agendasWhatsapp: number
   showsOrganico: number
   showsAds: number
   cierresOrganico: number
@@ -331,9 +335,13 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
               agendas: Number(r.agendas) || 0,
               conversaciones_stories: Number(r.conversaciones_stories) || 0,
               conversaciones_reels: Number(r.conversaciones_reels) || 0,
+              conversaciones_youtube: Number(r.conversaciones_youtube) || 0,
+              conversaciones_whatsapp: Number(r.conversaciones_whatsapp) || 0,
               agendas_stories: Number(r.agendas_stories) || 0,
               agendas_reels: Number(r.agendas_reels) || 0,
               agendas_ads: Number(r.agendas_ads) || 0,
+              agendas_youtube: Number(r.agendas_youtube) || 0,
+              agendas_whatsapp: Number(r.agendas_whatsapp) || 0,
               shows: 0,
               cierres: 0,
               ingreso: 0,
@@ -385,9 +393,13 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
   const cierres = sumField(closerReports, 'cierres')
   const conversacionesStories = sumField(setterReports, 'conversaciones_stories')
   const conversacionesReels = sumField(setterReports, 'conversaciones_reels')
+  const conversacionesYoutube = sumField(setterReports, 'conversaciones_youtube')
+  const conversacionesWhatsapp = sumField(setterReports, 'conversaciones_whatsapp')
   const agendasStories = sumField(setterReports, 'agendas_stories')
   const agendasReels = sumField(setterReports, 'agendas_reels')
   const agendasAds = sumField(setterReports, 'agendas_ads')
+  const agendasYoutube = sumField(setterReports, 'agendas_youtube')
+  const agendasWhatsapp = sumField(setterReports, 'agendas_whatsapp')
   const showsOrganico = sumField(closerReports, 'shows_organico')
   const showsAds = sumField(closerReports, 'shows_ads')
   const cierresOrganico = sumField(closerReports, 'cierres_organico')
@@ -577,9 +589,13 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
       chatsReels,
       conversacionesStories,
       conversacionesReels,
+      conversacionesYoutube,
+      conversacionesWhatsapp,
       agendasStories,
       agendasReels,
       agendasAds,
+      agendasYoutube,
+      agendasWhatsapp,
       showsOrganico,
       showsAds,
       cierresOrganico,

@@ -634,6 +634,42 @@ class KeywordsListResponse(BaseModel):
     metrics: KeywordsMetrics = Field(default_factory=KeywordsMetrics)
 
 
+class SetterReportCreate(BaseModel):
+    """Body de POST /api/team/setter-reports (equivalente a create/update/out de canales)."""
+
+    member_id: int
+    fecha: date
+    conversaciones: int = 0
+    agendas: int = 0
+    links_enviados: int = 0
+    conversaciones_stories: int = 0
+    conversaciones_reels: int = 0
+    conversaciones_youtube: int = 0
+    conversaciones_whatsapp: int = 0
+    agendas_stories: int = 0
+    agendas_reels: int = 0
+    agendas_ads: int = 0
+    agendas_youtube: int = 0
+    agendas_whatsapp: int = 0
+    links_enviados_stories: int = 0
+    links_enviados_reels: int = 0
+    links_enviados_youtube: int = 0
+    links_enviados_whatsapp: int = 0
+    notas: str | None = None
+    sentimiento_trafico: str | None = None
+    avatar_tipo_agendas: str | None = None
+    insights_marketing: str | None = None
+
+
+class SetterReportUpdate(SetterReportCreate):
+    pass
+
+
+class SetterReportOut(SetterReportCreate):
+    id: int
+    updated: bool = False
+
+
 class SyncSettingsOut(BaseModel):
     stories_interval_minutes: int
     reels_interval_minutes: int

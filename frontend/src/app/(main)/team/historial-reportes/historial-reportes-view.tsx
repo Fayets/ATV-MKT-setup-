@@ -22,11 +22,17 @@ type ReportRow =
       links_enviados: number
       conversaciones_stories: number
       conversaciones_reels: number
+      conversaciones_youtube: number
+      conversaciones_whatsapp: number
       agendas_stories: number
       agendas_reels: number
       agendas_ads: number
+      agendas_youtube: number
+      agendas_whatsapp: number
       links_enviados_stories: number
       links_enviados_reels: number
+      links_enviados_youtube: number
+      links_enviados_whatsapp: number
       notas: string
       sentimiento_trafico: string
       avatar_tipo_agendas: string
@@ -183,11 +189,17 @@ function SetterConversacionesDetail({
 }) {
   const conversacionesStories = Number(r.conversaciones_stories) || 0
   const conversacionesReels = Number(r.conversaciones_reels) || 0
+  const conversacionesYoutube = Number(r.conversaciones_youtube) || 0
+  const conversacionesWhatsapp = Number(r.conversaciones_whatsapp) || 0
   const linksStories = Number(r.links_enviados_stories) || 0
   const linksReels = Number(r.links_enviados_reels) || 0
+  const linksYoutube = Number(r.links_enviados_youtube) || 0
+  const linksWhatsapp = Number(r.links_enviados_whatsapp) || 0
   const agendasStories = Number(r.agendas_stories) || 0
   const agendasReels = Number(r.agendas_reels) || 0
   const agendasAds = Number(r.agendas_ads) || 0
+  const agendasYoutube = Number(r.agendas_youtube) || 0
+  const agendasWhatsapp = Number(r.agendas_whatsapp) || 0
 
   return (
     <div className="space-y-4">
@@ -205,6 +217,18 @@ function SetterConversacionesDetail({
             conversaciones={conversacionesReels}
             calendlys={linksReels}
             agendas={agendasReels}
+          />
+          <SetterMetricRow
+            title="YouTube"
+            conversaciones={conversacionesYoutube}
+            calendlys={linksYoutube}
+            agendas={agendasYoutube}
+          />
+          <SetterMetricRow
+            title="WhatsApp"
+            conversaciones={conversacionesWhatsapp}
+            calendlys={linksWhatsapp}
+            agendas={agendasWhatsapp}
           />
           <div>
             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">

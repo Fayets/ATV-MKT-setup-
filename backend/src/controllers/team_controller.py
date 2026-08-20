@@ -11,6 +11,7 @@ from starlette.responses import Response
 
 from src.db_query_utils import filter_date_range, rows_for_user
 from src.models import CloserReport, SeguimientoReport, SetterReport, TeamMember
+from src.schemas import SetterReportCreate
 from src.team_reports_pdf import build_team_reports_pdf, fecha_iso_a_dd_mm_yyyy
 
 router = APIRouter(prefix="/api/team", tags=["team"], redirect_slashes=False)
@@ -119,11 +120,17 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "links_enviados": r.links_enviados,
                     "conversaciones_stories": r.conversaciones_stories,
                     "conversaciones_reels": r.conversaciones_reels,
+                    "conversaciones_youtube": r.conversaciones_youtube,
+                    "conversaciones_whatsapp": r.conversaciones_whatsapp,
                     "agendas_stories": r.agendas_stories,
                     "agendas_reels": r.agendas_reels,
                     "agendas_ads": r.agendas_ads,
+                    "agendas_youtube": r.agendas_youtube,
+                    "agendas_whatsapp": r.agendas_whatsapp,
                     "links_enviados_stories": r.links_enviados_stories,
                     "links_enviados_reels": r.links_enviados_reels,
+                    "links_enviados_youtube": r.links_enviados_youtube,
+                    "links_enviados_whatsapp": r.links_enviados_whatsapp,
                     "notas": r.notas or "",
                     "sentimiento_trafico": r.sentimiento_trafico or "",
                     "avatar_tipo_agendas": r.avatar_tipo_agendas or "",
@@ -230,23 +237,7 @@ class UpdateTeamMemberBody(BaseModel):
     activo: bool | None = None
 
 
-class SetterReportBody(BaseModel):
-    member_id: int
-    fecha: date
-    conversaciones: int = 0
-    agendas: int = 0
-    links_enviados: int = 0
-    conversaciones_stories: int = 0
-    conversaciones_reels: int = 0
-    agendas_stories: int = 0
-    agendas_reels: int = 0
-    agendas_ads: int = 0
-    links_enviados_stories: int = 0
-    links_enviados_reels: int = 0
-    notas: str | None = None
-    sentimiento_trafico: str | None = None
-    avatar_tipo_agendas: str | None = None
-    insights_marketing: str | None = None
+SetterReportBody = SetterReportCreate
 
 
 class CloserReportBody(BaseModel):
@@ -515,11 +506,17 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             r.links_enviados = body.links_enviados
             r.conversaciones_stories = body.conversaciones_stories
             r.conversaciones_reels = body.conversaciones_reels
+            r.conversaciones_youtube = body.conversaciones_youtube
+            r.conversaciones_whatsapp = body.conversaciones_whatsapp
             r.agendas_stories = body.agendas_stories
             r.agendas_reels = body.agendas_reels
             r.agendas_ads = body.agendas_ads
+            r.agendas_youtube = body.agendas_youtube
+            r.agendas_whatsapp = body.agendas_whatsapp
             r.links_enviados_stories = body.links_enviados_stories
             r.links_enviados_reels = body.links_enviados_reels
+            r.links_enviados_youtube = body.links_enviados_youtube
+            r.links_enviados_whatsapp = body.links_enviados_whatsapp
             r.notas = _notas_str(body.notas)
             r.sentimiento_trafico = _notas_str(body.sentimiento_trafico)
             r.avatar_tipo_agendas = _notas_str(body.avatar_tipo_agendas)
@@ -534,11 +531,17 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             links_enviados=body.links_enviados,
             conversaciones_stories=body.conversaciones_stories,
             conversaciones_reels=body.conversaciones_reels,
+            conversaciones_youtube=body.conversaciones_youtube,
+            conversaciones_whatsapp=body.conversaciones_whatsapp,
             agendas_stories=body.agendas_stories,
             agendas_reels=body.agendas_reels,
             agendas_ads=body.agendas_ads,
+            agendas_youtube=body.agendas_youtube,
+            agendas_whatsapp=body.agendas_whatsapp,
             links_enviados_stories=body.links_enviados_stories,
             links_enviados_reels=body.links_enviados_reels,
+            links_enviados_youtube=body.links_enviados_youtube,
+            links_enviados_whatsapp=body.links_enviados_whatsapp,
             notas=_notas_str(body.notas),
             sentimiento_trafico=_notas_str(body.sentimiento_trafico),
             avatar_tipo_agendas=_notas_str(body.avatar_tipo_agendas),

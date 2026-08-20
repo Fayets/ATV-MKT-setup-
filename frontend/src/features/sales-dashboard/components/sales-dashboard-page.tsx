@@ -165,9 +165,11 @@ function getMetricExplanation(id: MonthlyMetricId, d: VDData): MetricExplanation
         data: [
           { label: 'Historias', value: fN(d.conversacionesStories) },
           { label: 'Reels', value: fN(d.conversacionesReels) },
+          { label: 'YouTube', value: fN(d.conversacionesYoutube) },
+          { label: 'WhatsApp', value: fN(d.conversacionesWhatsapp) },
           { label: 'Total conversaciones', value: fN(d.conversaciones) },
         ],
-        source: 'Fuente: reportes setter (/team/reports) — campo conversaciones (Historias + Reels).',
+        source: 'Fuente: reportes setter (/team/reports) — campo conversaciones (Historias + Reels + YouTube + WhatsApp).',
       }
     case 'agendas':
       return {
@@ -178,6 +180,8 @@ function getMetricExplanation(id: MonthlyMetricId, d: VDData): MetricExplanation
           { label: 'Historias', value: fN(d.agendasStories) },
           { label: 'Reels', value: fN(d.agendasReels) },
           { label: 'Ads', value: fN(d.agendasAds) },
+          { label: 'YouTube', value: fN(d.agendasYoutube) },
+          { label: 'WhatsApp', value: fN(d.agendasWhatsapp) },
           { label: 'Total agendas', value: fN(d.agendas) },
         ],
         source: 'Fuente: reportes setter (/team/reports) — llamadas agendadas por canal.',
@@ -426,12 +430,16 @@ function funnelStepBreakdown(
       return [
         { label: 'Historias', value: d.conversacionesStories },
         { label: 'Reels', value: d.conversacionesReels },
+        { label: 'YouTube', value: d.conversacionesYoutube },
+        { label: 'WhatsApp', value: d.conversacionesWhatsapp },
       ]
     case 'AGENDAS':
       return [
         { label: 'Historias', value: d.agendasStories },
         { label: 'Reels', value: d.agendasReels },
         { label: 'Ads', value: d.agendasAds },
+        { label: 'YouTube', value: d.agendasYoutube },
+        { label: 'WhatsApp', value: d.agendasWhatsapp },
       ]
     case 'SHOWS':
       return [
