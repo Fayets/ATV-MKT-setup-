@@ -2,6 +2,8 @@ import { AppProviders } from '@/shared/components/app-providers'
 import { AuthGuard } from '@/shared/components/auth-guard'
 import { MainLayoutShell } from '@/shared/components/main-layout-shell'
 
+export const dynamic = 'force-dynamic'
+
 export default function MainLayout({
   children,
 }: {
