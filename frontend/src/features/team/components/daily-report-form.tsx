@@ -305,9 +305,9 @@ export function DailyReportSection({ role }: Props) {
   ) => (
     <div className="flex min-w-0 flex-col">
       <label
-        className={`mb-1.5 flex items-end leading-snug ${labelMinHeight} ${labelClass}`}
+        className={`mb-1.5 flex w-full min-w-0 items-end leading-snug ${labelMinHeight} ${labelClass}`}
       >
-        {label}
+        <span className="min-w-0 break-words">{label}</span>
       </label>
       <input
         type="number"
@@ -328,7 +328,7 @@ export function DailyReportSection({ role }: Props) {
   const setterConversacionesRow = (
     fields: { key: NumKey; label: string }[],
   ) => (
-    <div className={`grid gap-3 ${fields.length >= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+    <div className={`grid gap-3 ${fields.length >= 4 ? 'grid-cols-2' : 'grid-cols-3'}`}>
       {fields.map(({ key, label }) => (
         <Fragment key={key}>
           {numField(key, label, false, fieldLabelClass, undefined, 'min-h-[2.75rem]')}
