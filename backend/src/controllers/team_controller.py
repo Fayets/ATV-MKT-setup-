@@ -121,16 +121,18 @@ def _collect_team_reports(uid: int, desde: date, hasta: date) -> list[dict[str, 
                     "conversaciones_stories": r.conversaciones_stories,
                     "conversaciones_reels": r.conversaciones_reels,
                     "conversaciones_youtube": r.conversaciones_youtube,
-                    "conversaciones_whatsapp": r.conversaciones_whatsapp,
+                    "conversaciones_ads": r.conversaciones_ads,
+                    "chats_youtube": r.chats_youtube,
+                    "chats_ads": r.chats_ads,
                     "agendas_stories": r.agendas_stories,
                     "agendas_reels": r.agendas_reels,
-                    "agendas_ads": r.agendas_ads,
                     "agendas_youtube": r.agendas_youtube,
-                    "agendas_whatsapp": r.agendas_whatsapp,
+                    "agendas_ads": r.agendas_ads,
+                    "agendas_youtube_directo": r.agendas_youtube_directo,
                     "links_enviados_stories": r.links_enviados_stories,
                     "links_enviados_reels": r.links_enviados_reels,
                     "links_enviados_youtube": r.links_enviados_youtube,
-                    "links_enviados_whatsapp": r.links_enviados_whatsapp,
+                    "links_enviados_ads": r.links_enviados_ads,
                     "notas": r.notas or "",
                     "sentimiento_trafico": r.sentimiento_trafico or "",
                     "avatar_tipo_agendas": r.avatar_tipo_agendas or "",
@@ -507,16 +509,18 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             r.conversaciones_stories = body.conversaciones_stories
             r.conversaciones_reels = body.conversaciones_reels
             r.conversaciones_youtube = body.conversaciones_youtube
-            r.conversaciones_whatsapp = body.conversaciones_whatsapp
+            r.conversaciones_ads = body.conversaciones_ads
+            r.chats_youtube = body.chats_youtube
+            r.chats_ads = body.chats_ads
             r.agendas_stories = body.agendas_stories
             r.agendas_reels = body.agendas_reels
-            r.agendas_ads = body.agendas_ads
             r.agendas_youtube = body.agendas_youtube
-            r.agendas_whatsapp = body.agendas_whatsapp
+            r.agendas_ads = body.agendas_ads
+            r.agendas_youtube_directo = body.agendas_youtube_directo
             r.links_enviados_stories = body.links_enviados_stories
             r.links_enviados_reels = body.links_enviados_reels
             r.links_enviados_youtube = body.links_enviados_youtube
-            r.links_enviados_whatsapp = body.links_enviados_whatsapp
+            r.links_enviados_ads = body.links_enviados_ads
             r.notas = _notas_str(body.notas)
             r.sentimiento_trafico = _notas_str(body.sentimiento_trafico)
             r.avatar_tipo_agendas = _notas_str(body.avatar_tipo_agendas)
@@ -532,16 +536,18 @@ def save_setter_report(body: SetterReportBody, user_id: str = Depends(require_us
             conversaciones_stories=body.conversaciones_stories,
             conversaciones_reels=body.conversaciones_reels,
             conversaciones_youtube=body.conversaciones_youtube,
-            conversaciones_whatsapp=body.conversaciones_whatsapp,
+            conversaciones_ads=body.conversaciones_ads,
+            chats_youtube=body.chats_youtube,
+            chats_ads=body.chats_ads,
             agendas_stories=body.agendas_stories,
             agendas_reels=body.agendas_reels,
-            agendas_ads=body.agendas_ads,
             agendas_youtube=body.agendas_youtube,
-            agendas_whatsapp=body.agendas_whatsapp,
+            agendas_ads=body.agendas_ads,
+            agendas_youtube_directo=body.agendas_youtube_directo,
             links_enviados_stories=body.links_enviados_stories,
             links_enviados_reels=body.links_enviados_reels,
             links_enviados_youtube=body.links_enviados_youtube,
-            links_enviados_whatsapp=body.links_enviados_whatsapp,
+            links_enviados_ads=body.links_enviados_ads,
             notas=_notas_str(body.notas),
             sentimiento_trafico=_notas_str(body.sentimiento_trafico),
             avatar_tipo_agendas=_notas_str(body.avatar_tipo_agendas),

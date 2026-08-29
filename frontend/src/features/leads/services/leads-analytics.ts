@@ -53,15 +53,17 @@ export const RESERVA_CASH_EUR = 300
 export type LeadsAnalytics = LeadsFunnel & {
   chatsStories: number
   chatsReels: number
+  chatsYoutube: number
+  chatsAds: number
   conversacionesStories: number
   conversacionesReels: number
   conversacionesYoutube: number
-  conversacionesWhatsapp: number
+  conversacionesAds: number
   agendasStories: number
   agendasReels: number
-  agendasAds: number
   agendasYoutube: number
-  agendasWhatsapp: number
+  agendasAds: number
+  agendasYoutubeDirecto: number
   showsOrganico: number
   showsAds: number
   cierresOrganico: number
@@ -336,12 +338,14 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
               conversaciones_stories: Number(r.conversaciones_stories) || 0,
               conversaciones_reels: Number(r.conversaciones_reels) || 0,
               conversaciones_youtube: Number(r.conversaciones_youtube) || 0,
-              conversaciones_whatsapp: Number(r.conversaciones_whatsapp) || 0,
+              conversaciones_ads: Number(r.conversaciones_ads) || 0,
+              chats_youtube: Number(r.chats_youtube) || 0,
+              chats_ads: Number(r.chats_ads) || 0,
               agendas_stories: Number(r.agendas_stories) || 0,
               agendas_reels: Number(r.agendas_reels) || 0,
-              agendas_ads: Number(r.agendas_ads) || 0,
               agendas_youtube: Number(r.agendas_youtube) || 0,
-              agendas_whatsapp: Number(r.agendas_whatsapp) || 0,
+              agendas_ads: Number(r.agendas_ads) || 0,
+              agendas_youtube_directo: Number(r.agendas_youtube_directo) || 0,
               shows: 0,
               cierres: 0,
               ingreso: 0,
@@ -381,8 +385,6 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
     /* red / sin sesión: seguimos con arrays vacíos */
   }
 
-  const chats = chatsReels + chatsStories
-
   // Embudo y series: reportes diarios setter + closer (ventas); programas y revenue desde leads
   const sumField = (reports: Record<string, unknown>[], field: string) =>
     reports.reduce((s, r) => s + (Number(r[field]) || 0), 0)
@@ -394,12 +396,15 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
   const conversacionesStories = sumField(setterReports, 'conversaciones_stories')
   const conversacionesReels = sumField(setterReports, 'conversaciones_reels')
   const conversacionesYoutube = sumField(setterReports, 'conversaciones_youtube')
-  const conversacionesWhatsapp = sumField(setterReports, 'conversaciones_whatsapp')
+  const conversacionesAds = sumField(setterReports, 'conversaciones_ads')
+  const chatsYoutube = sumField(setterReports, 'chats_youtube')
+  const chatsAds = sumField(setterReports, 'chats_ads')
+  const chats = chatsReels + chatsStories + chatsYoutube + chatsAds
   const agendasStories = sumField(setterReports, 'agendas_stories')
   const agendasReels = sumField(setterReports, 'agendas_reels')
-  const agendasAds = sumField(setterReports, 'agendas_ads')
   const agendasYoutube = sumField(setterReports, 'agendas_youtube')
-  const agendasWhatsapp = sumField(setterReports, 'agendas_whatsapp')
+  const agendasAds = sumField(setterReports, 'agendas_ads')
+  const agendasYoutubeDirecto = sumField(setterReports, 'agendas_youtube_directo')
   const showsOrganico = sumField(closerReports, 'shows_organico')
   const showsAds = sumField(closerReports, 'shows_ads')
   const cierresOrganico = sumField(closerReports, 'cierres_organico')
@@ -587,15 +592,17 @@ export async function getLeadsAnalytics(month: string): Promise<{ leads: LeadRow
       ...funnel,
       chatsStories,
       chatsReels,
+      chatsYoutube,
+      chatsAds,
       conversacionesStories,
       conversacionesReels,
       conversacionesYoutube,
-      conversacionesWhatsapp,
+      conversacionesAds,
       agendasStories,
       agendasReels,
-      agendasAds,
       agendasYoutube,
-      agendasWhatsapp,
+      agendasAds,
+      agendasYoutubeDirecto,
       showsOrganico,
       showsAds,
       cierresOrganico,

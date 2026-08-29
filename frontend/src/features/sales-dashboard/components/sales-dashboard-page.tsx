@@ -166,10 +166,10 @@ function getMetricExplanation(id: MonthlyMetricId, d: VDData): MetricExplanation
           { label: 'Historias', value: fN(d.conversacionesStories) },
           { label: 'Reels', value: fN(d.conversacionesReels) },
           { label: 'YouTube', value: fN(d.conversacionesYoutube) },
-          { label: 'WhatsApp', value: fN(d.conversacionesWhatsapp) },
+          { label: 'Ads', value: fN(d.conversacionesAds) },
           { label: 'Total conversaciones', value: fN(d.conversaciones) },
         ],
-        source: 'Fuente: reportes setter (/team/reports) — campo conversaciones (Historias + Reels + YouTube + WhatsApp).',
+        source: 'Fuente: reportes setter (/team/reports) — campo conversaciones (Historias + Reels + YouTube + Ads).',
       }
     case 'agendas':
       return {
@@ -179,12 +179,11 @@ function getMetricExplanation(id: MonthlyMetricId, d: VDData): MetricExplanation
         data: [
           { label: 'Historias', value: fN(d.agendasStories) },
           { label: 'Reels', value: fN(d.agendasReels) },
-          { label: 'Ads', value: fN(d.agendasAds) },
           { label: 'YouTube', value: fN(d.agendasYoutube) },
-          { label: 'WhatsApp', value: fN(d.agendasWhatsapp) },
+          { label: 'Ads', value: fN(d.agendasAds) },
           { label: 'Total agendas', value: fN(d.agendas) },
         ],
-        source: 'Fuente: reportes setter (/team/reports) — llamadas agendadas por canal.',
+        source: 'Fuente: reportes setter (/team/reports) — llamadas agendadas por canal (Historias + Reels + YouTube + Ads). Las reservas directas de YouTube (YT) no entran en este desglose.',
       }
     case 'noShows':
       return {
@@ -425,21 +424,22 @@ function funnelStepBreakdown(
       return [
         { label: 'Historias', value: d.chatsStories },
         { label: 'Reels', value: d.chatsReels },
+        { label: 'YouTube', value: d.chatsYoutube },
+        { label: 'Ads', value: d.chatsAds },
       ]
     case 'CONVERSACIONES':
       return [
         { label: 'Historias', value: d.conversacionesStories },
         { label: 'Reels', value: d.conversacionesReels },
         { label: 'YouTube', value: d.conversacionesYoutube },
-        { label: 'WhatsApp', value: d.conversacionesWhatsapp },
+        { label: 'Ads', value: d.conversacionesAds },
       ]
     case 'AGENDAS':
       return [
         { label: 'Historias', value: d.agendasStories },
         { label: 'Reels', value: d.agendasReels },
-        { label: 'Ads', value: d.agendasAds },
         { label: 'YouTube', value: d.agendasYoutube },
-        { label: 'WhatsApp', value: d.agendasWhatsapp },
+        { label: 'Ads', value: d.agendasAds },
       ]
     case 'SHOWS':
       return [
@@ -623,10 +623,14 @@ function FunnelChatsBreakdown({
   month,
   chatsStories,
   chatsReels,
+  chatsYoutube,
+  chatsAds,
 }: {
   month: string
   chatsStories: number
   chatsReels: number
+  chatsYoutube: number
+  chatsAds: number
 }) {
   const [reels, setReels] = useState<FunnelReelItem[]>([])
   const [stories, setStories] = useState<FunnelStoryItem[]>([])
@@ -697,6 +701,19 @@ function FunnelChatsBreakdown({
   }
 
   return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)]/40 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">YouTube</div>
+          <div className="mt-1 font-mono-num text-[16px] font-bold text-[var(--accent)]">{fN(chatsYoutube)}</div>
+          <div className="text-[10px] text-[var(--text3)]">Carga setter (manual)</div>
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg3)]/40 px-3 py-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">Ads</div>
+          <div className="mt-1 font-mono-num text-[16px] font-bold text-[var(--accent)]">{fN(chatsAds)}</div>
+          <div className="text-[10px] text-[var(--text3)]">Carga setter (manual)</div>
+        </div>
+      </div>
     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
       <div>
         <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-[var(--border)] pb-2">
@@ -744,6 +761,7 @@ function FunnelChatsBreakdown({
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }
@@ -1051,6 +1069,8 @@ function FunnelBreakdownModal({
   month,
   chatsStories,
   chatsReels,
+  chatsYoutube,
+  chatsAds,
 }: {
   step: FunnelLeadStep | null
   open: boolean
@@ -1058,6 +1078,8 @@ function FunnelBreakdownModal({
   month: string
   chatsStories: number
   chatsReels: number
+  chatsYoutube: number
+  chatsAds: number
 }) {
   if (!step) return null
 
@@ -1067,9 +1089,15 @@ function FunnelBreakdownModal({
     <Modal open={open} onClose={onClose} title={title} maxWidth={step === 'CHATS' ? '1040px' : '920px'}>
       {step === 'CHATS' ? (
         <>
-          <FunnelChatsBreakdown month={month} chatsStories={chatsStories} chatsReels={chatsReels} />
+          <FunnelChatsBreakdown
+            month={month}
+            chatsStories={chatsStories}
+            chatsReels={chatsReels}
+            chatsYoutube={chatsYoutube}
+            chatsAds={chatsAds}
+          />
           <p className="mt-4 text-[11px] text-[var(--text3)]">
-            Chats del mes = replies en historias + chats en reels (métricas de contenido).
+            Chats del mes = replies en historias + chats en reels (métricas de contenido) + chats YouTube y Ads (reportes setter).
           </p>
         </>
       ) : step === 'CONVERSACIONES' ? (
@@ -1194,6 +1222,8 @@ function VDFunnel({ d, month }: { d: VDData; month: string }) {
       month={month}
       chatsStories={d.chatsStories}
       chatsReels={d.chatsReels}
+      chatsYoutube={d.chatsYoutube}
+      chatsAds={d.chatsAds}
     />
     </>
   )

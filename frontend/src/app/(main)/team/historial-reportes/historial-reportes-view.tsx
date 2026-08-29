@@ -23,16 +23,18 @@ type ReportRow =
       conversaciones_stories: number
       conversaciones_reels: number
       conversaciones_youtube: number
-      conversaciones_whatsapp: number
+      conversaciones_ads: number
+      chats_youtube: number
+      chats_ads: number
       agendas_stories: number
       agendas_reels: number
-      agendas_ads: number
       agendas_youtube: number
-      agendas_whatsapp: number
+      agendas_ads: number
+      agendas_youtube_directo: number
       links_enviados_stories: number
       links_enviados_reels: number
       links_enviados_youtube: number
-      links_enviados_whatsapp: number
+      links_enviados_ads: number
       notas: string
       sentimiento_trafico: string
       avatar_tipo_agendas: string
@@ -150,11 +152,13 @@ function reportListTitle(r: ReportRow): string {
 
 function SetterMetricRow({
   title,
+  chats,
   conversaciones,
   calendlys,
   agendas,
 }: {
   title: string
+  chats?: number
   conversaciones: number
   calendlys: number
   agendas: number
@@ -164,7 +168,13 @@ function SetterMetricRow({
       <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
         {title}
       </div>
-      <div className="grid grid-cols-3 gap-3 text-[12px]">
+      <div className={`grid gap-3 text-[12px] ${chats != null ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+        {chats != null && (
+          <div>
+            <dt className="font-bold text-[var(--text)]">Chats</dt>
+            <dd className="font-mono-num text-[var(--text)]">{chats}</dd>
+          </div>
+        )}
         <div>
           <dt className="font-bold text-[var(--text)]">Conv. reales</dt>
           <dd className="font-mono-num text-[var(--text)]">{conversaciones}</dd>
@@ -190,16 +200,18 @@ function SetterConversacionesDetail({
   const conversacionesStories = Number(r.conversaciones_stories) || 0
   const conversacionesReels = Number(r.conversaciones_reels) || 0
   const conversacionesYoutube = Number(r.conversaciones_youtube) || 0
-  const conversacionesWhatsapp = Number(r.conversaciones_whatsapp) || 0
+  const conversacionesAds = Number(r.conversaciones_ads) || 0
+  const chatsYoutube = Number(r.chats_youtube) || 0
+  const chatsAds = Number(r.chats_ads) || 0
   const linksStories = Number(r.links_enviados_stories) || 0
   const linksReels = Number(r.links_enviados_reels) || 0
   const linksYoutube = Number(r.links_enviados_youtube) || 0
-  const linksWhatsapp = Number(r.links_enviados_whatsapp) || 0
+  const linksAds = Number(r.links_enviados_ads) || 0
   const agendasStories = Number(r.agendas_stories) || 0
   const agendasReels = Number(r.agendas_reels) || 0
-  const agendasAds = Number(r.agendas_ads) || 0
   const agendasYoutube = Number(r.agendas_youtube) || 0
-  const agendasWhatsapp = Number(r.agendas_whatsapp) || 0
+  const agendasAds = Number(r.agendas_ads) || 0
+  const agendasYoutubeDirecto = Number(r.agendas_youtube_directo) || 0
 
   return (
     <div className="space-y-4">
@@ -220,23 +232,25 @@ function SetterConversacionesDetail({
           />
           <SetterMetricRow
             title="YouTube"
+            chats={chatsYoutube}
             conversaciones={conversacionesYoutube}
             calendlys={linksYoutube}
             agendas={agendasYoutube}
           />
           <SetterMetricRow
-            title="WhatsApp"
-            conversaciones={conversacionesWhatsapp}
-            calendlys={linksWhatsapp}
-            agendas={agendasWhatsapp}
+            title="Ads"
+            chats={chatsAds}
+            conversaciones={conversacionesAds}
+            calendlys={linksAds}
+            agendas={agendasAds}
           />
           <div>
             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--text3)]">
-              Ads
+              YouTube directo
             </div>
             <div className="text-[12px]">
-              <dt className="font-bold text-[var(--text)]">Llamadas agendadas</dt>
-              <dd className="font-mono-num text-[var(--text)]">{agendasAds}</dd>
+              <dt className="font-bold text-[var(--text)]">Llamadas agendadas (YT)</dt>
+              <dd className="font-mono-num text-[var(--text)]">{agendasYoutubeDirecto}</dd>
             </div>
           </div>
         </div>

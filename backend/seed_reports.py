@@ -21,7 +21,7 @@ with db_session:
         conversaciones_reels=6,
         agendas_stories=5,
         agendas_reels=3,
-        agendas_ads=0,
+        agendas_youtube_directo=0,
         links_enviados_stories=6,
         links_enviados_reels=4,
         sentimiento_trafico="Buen tráfico hoy",
